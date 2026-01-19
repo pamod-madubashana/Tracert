@@ -11,7 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
-
+tracert-nova-main
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
