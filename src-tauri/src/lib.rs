@@ -1,8 +1,6 @@
-use std::process::Command;
 use regex::Regex;
-use tauri_plugin_shell;
-use std::time::Duration;
-use std::process::Stdio;
+use tauri_plugin_shell::{self, ShellExt};
+use tauri::{Runtime, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,7 +28,10 @@ fn run_traceroute(target: String) -> Result<String, String> {
         return Err("Invalid target: must contain only letters, digits, dots, dashes, colons, and underscores. Max 255 characters.".to_string());
     }
 
-    // Execute OS-specific traceroute command
+    // Execute OS-specific traceroute command using shell plugin
+    // We'll use std::process::Command with a timeout mechanism
+    use std::process::Command;
+    
     let output = match std::env::consts::OS {
         "windows" => {
             // Windows: tracert -d <target>
