@@ -1,6 +1,8 @@
 use std::process::Command;
 use regex::Regex;
 use tauri_plugin_shell;
+use std::time::Duration;
+use std::process::Stdio;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
