@@ -1,36 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
 
-// Define invoke function that will be initialized properly
+// Proper Tauri import with fallback for development
 let invoke: (cmd: string, args?: Record<string, unknown>) => Promise<any>;
 
-// Initialize invoke function dynamically
-const initializeInvoke = async () => {
-  try {
-    // Try to import Tauri
-    const tauriModule = await import('@tauri-apps/api');
-    // @ts-ignore - Using dynamic property access to avoid type errors
-    invoke = tauriModule.invoke;
-  } catch (e) {
-    // Fallback for browser development - mock implementation
-    console.warn('Tauri not available, using mock implementation');
-    invoke = async (cmd: string, args?: Record<string, unknown>) => {
-      // Mock traceroute response for development
-      if (cmd === 'run_traceroute') {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
-        return `Tracing route to ${args?.target} [${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}]
+// Initialize invoke at runtime to avoid build errors
+if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+  // Running in Tauri environment
+  const tauriModule = (window as any).__TAURI__;
+  invoke = tauriModule.invoke;
+} else {
+  // Browser environment - mock implementation
+  console.warn('Tauri not available, using mock implementation');
+  invoke = async (cmd: string, args?: Record<string, unknown>) => {
+    // Mock traceroute response for development
+    if (cmd === 'run_traceroute') {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
+      return `Tracing route to ${args?.target} [${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}]
 1     1 ms    <1 ms    <1 ms  192.168.1.1
 2     2 ms     1 ms     1 ms  10.0.0.1
 3     3 ms     2 ms     2 ms  ${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}
 4     4 ms     3 ms     3 ms  ${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}
 5     5 ms     4 ms     4 ms  ${(args?.target as string) || 'target.com'}`;
-      }
-      throw new Error(`Unknown command: ${cmd}`);
-    };
-  }
-};
-
-// Initialize invoke function when the module loads
-initializeInvoke();
+    }
+    throw new Error(`Unknown command: ${cmd}`);
+  };
+}
 
 interface Hop {
   number: number;
