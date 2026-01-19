@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "echo '⚠️  Tauri commands are restricted locally. Please use GitHub Actions for building.' && exit 1",
+    "tauri:dev": "echo '⚠️  Tauri development is restricted locally. Use \"npm run dev\" for browser development.' && exit 1",
+    "tauri:build": "echo '⚠️  Tauri builds are restricted locally. Please use GitHub Actions workflow.' && exit 1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.1",
