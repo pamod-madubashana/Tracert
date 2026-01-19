@@ -144,11 +144,38 @@ export const useTraceSimulation = () => {
       // Call the Tauri command to run actual traceroute
       let rawOutput: string;
       
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        // Running in Tauri context
-        rawOutput = await (window as any).__TAURI__.invoke("run_traceroute", { target });
+      // Debug logging
+      console.log("Window object:", typeof window !== 'undefined' ? "Available" : "Not available");
+      console.log("Tauri object:", typeof window !== 'undefined' && (window as any).__TAURI__ ? "Available" : "Not available");
+      
+      // Try multiple ways to detect Tauri context
+      const isTauriContext = typeof window !== 'undefined' && (
+        (window as any).__TAURI__ ||
+        (window as any).__TAURI_INTERNALS__ ||
+        typeof (window as any).ipc !== 'undefined'
+      );
+      
+      console.log("Is Tauri context:", isTauriContext);
+      
+      if (isTauriContext) {
+        try {
+          // Running in Tauri context
+          console.log("Attempting to call Tauri command...");
+          if ((window as any).__TAURI__) {
+            rawOutput = await (window as any).__TAURI__.invoke("run_traceroute", { target });
+          } else if ((window as any).__TAURI_INTERNALS__) {
+            rawOutput = await (window as any).__TAURI_INTERNALS__.invoke("run_traceroute", { target });
+          } else {
+            throw new Error("Tauri invoke method not found");
+          }
+          console.log("Tauri command successful");
+        } catch (tauriError) {
+          console.error("Tauri command failed:", tauriError);
+          throw tauriError;
+        }
       } else {
         // Fallback for browser development - return mock data
+        console.log("Using mock data fallback");
         rawOutput = `Tracing route to ${target} [${target}]
 over a maximum of 30 hops:
 
