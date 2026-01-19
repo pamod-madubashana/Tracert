@@ -142,7 +142,22 @@ export const useTraceSimulation = () => {
       const startTime = new Date();
       
       // Call the Tauri command to run actual traceroute
-      const rawOutput: string = await window.__TAURI__.invoke("run_traceroute", { target });
+      let rawOutput: string;
+      
+      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+        // Running in Tauri context
+        rawOutput = await (window as any).__TAURI__.invoke("run_traceroute", { target });
+      } else {
+        // Fallback for browser development - return mock data
+        rawOutput = `Tracing route to ${target} [${target}]
+over a maximum of 30 hops:
+
+  1    <1 ms    <1 ms    <1 ms  192.168.1.1
+  2     2 ms     1 ms     1 ms  10.0.0.1
+  3     3 ms     2 ms     2 ms  ${target} [${target}]
+
+Trace complete.`;
+      }
       
       // Parse the output to extract hop data
       const hops = parseTracerouteOutput(rawOutput, target);
