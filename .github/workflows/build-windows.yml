@@ -1,0 +1,57 @@
+name: Build Tauri App for Windows
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        rustc --version
+        cargo --version
+
+    - name: Install WebView2 (required for Tauri)
+      shell: pwsh
+      run: |
+        # Download and install WebView2 runtime
+        $webview2Installer = "Microsoft.WebView2.FixedVersionRuntime.114.2.1722.55.x64.exe"
+        $downloadUrl = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/9bc056dc-09cc-4180-b8ff-389d3c7e0e65/$webview2Installer"
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $webview2Installer
+        Start-Process -FilePath ".\$webview2Installer" -ArgumentList "/silent", "/install" -Wait
+
+    - name: Build Tauri App
+      run: |
+        npm run tauri build
+      env:
+        TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: tauri-windows-app
+        path: |
+          src-tauri/target/release/bundle/msi/*.msi
+          src-tauri/target/release/bundle/nsis/*.exe
+        if-no-files-found: warn
