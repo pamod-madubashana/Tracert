@@ -162,9 +162,7 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
     let mut out_reader = BufReader::new(stdout).lines();
     let mut err_reader = BufReader::new(stderr).lines();
     
-    let mut raw_output = String::new();
-    let mut hops = Vec::new();
-    let start_time = chrono::Utc::now().to_rfc3339();
+    let raw_output = String::new();
     
     loop {
         tokio::select! {
