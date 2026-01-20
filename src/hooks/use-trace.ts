@@ -2,6 +2,13 @@ import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { HopData, TraceResult } from "@/types/trace";
 
+// Extend Window interface for Tauri internals
+declare global {
+  interface Window {
+    __TAURI_INTERNALS__?: any;
+  }
+}
+
 // Feature flag to switch between real and simulation mode
 const USE_SIM = import.meta.env.VITE_TRACE_SIM === "true";
 
@@ -53,6 +60,11 @@ export const useTrace = () => {
         }
       });
 
+      // Validate the result before using it
+      if (!traceResult || !Array.isArray(traceResult.hops)) {
+        throw new Error("Invalid trace result received from backend");
+      }
+
       // Update state with real results
       setCurrentHops(traceResult.hops);
       setResult({
@@ -62,10 +74,17 @@ export const useTrace = () => {
       });
 
     } catch (err) {
+      // Properly handle Tauri invoke errors
       const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
       setError(errorMessage);
       console.error("Trace failed:", errorMessage);
+      
+      // Reset state on error
+      setIsTracing(false);
+      return Promise.reject(err);
     } finally {
+      // Ensure we only set isTracing to false once
+      // Note: We don't check 'error' here because it refers to the error state before the catch block
       setIsTracing(false);
     }
   }, [useSimulation, startSimTrace]);
