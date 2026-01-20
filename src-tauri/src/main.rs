@@ -785,9 +785,7 @@ fn main() {
                 tauri::RunEvent::Ready => {
                     tracing::info!("[LIFECYCLE] App ready, PID={}", std::process::id());
                 }
-                tauri::RunEvent::WindowEvent { label, event, .. } => {
-                    tracing::debug!("[LIFECYCLE] Window event - {}: {:?}", label, event);
-                }
+                tauri::RunEvent::WindowEvent { label, event, .. } => {}
                 _ => {}
             }
         });
