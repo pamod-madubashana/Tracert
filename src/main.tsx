@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 declare global {
   interface Window {
     __sessionId?: string;
+    __TAURI_INTERNALS__?: any;
   }
 }
 
@@ -22,7 +23,12 @@ const logToFrontend = (message: string) => {
 
 const logToRust = async (level: "debug" | "info" | "warn" | "error", message: string) => {
   try {
-    await invoke(`log_${level}`, { message });
+    // Check if Tauri is available before attempting to invoke
+    if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined) {
+      await invoke(`log_${level}`, { message });
+    } else {
+      logToFrontend(`Fallback log - ${level.toUpperCase()}: ${message}`);
+    }
   } catch (e) {
     logToFrontend(`Fallback log - ${level.toUpperCase()}: ${message}`);
   }
