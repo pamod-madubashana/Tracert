@@ -151,6 +151,52 @@ const isValidIP = (str: string): boolean => {
   return ipv4Regex.test(str) || ipv6Regex.test(str);
 };
 
+// Generate placeholder geo data for visualization
+const generatePlaceholderGeo = (index: number, totalHops: number): GeoLocation => {
+  // Distribute hops along a rough path from source to destination
+  const progress = totalHops > 1 ? index / (totalHops - 1) : 0;
+  
+  // Start from roughly North America (San Francisco area)
+  const startLat = 37.7749;
+  const startLng = -122.4194;
+  
+  // End at roughly destination (could be anywhere, using Europe as example)
+  const endLat = 51.5074; // London
+  const endLng = -0.1278; // London
+  
+  // Interpolate position
+  const lat = startLat + (endLat - startLat) * progress;
+  const lng = startLng + (endLng - startLng) * progress;
+  
+  // Add some variation to make it look more realistic
+  const variance = 5;
+  const variedLat = lat + (Math.random() - 0.5) * variance;
+  const variedLng = lng + (Math.random() - 0.5) * variance;
+  
+  // Simple city mapping based on progress
+  const cities = [
+    { city: "San Francisco", country: "United States", countryCode: "US" },
+    { city: "Denver", country: "United States", countryCode: "US" },
+    { city: "Chicago", country: "United States", countryCode: "US" },
+    { city: "New York", country: "United States", countryCode: "US" },
+    { city: "London", country: "United Kingdom", countryCode: "GB" },
+    { city: "Frankfurt", country: "Germany", countryCode: "DE" },
+    { city: "Amsterdam", country: "Netherlands", countryCode: "NL" },
+    { city: "Paris", country: "France", countryCode: "FR" }
+  ];
+  
+  const cityIndex = Math.min(Math.floor(progress * cities.length), cities.length - 1);
+  const selectedCity = cities[cityIndex];
+  
+  return {
+    lat: variedLat,
+    lng: variedLng,
+    city: selectedCity.city,
+    country: selectedCity.country,
+    countryCode: selectedCity.countryCode
+  };
+};
+
 export const useTraceSimulation = () => {
   const [isTracing, setIsTracing] = useState(false);
   const [result, setResult] = useState<TraceResult | null>(null);
@@ -191,16 +237,22 @@ Trace complete.`;
       // Parse the output to extract hop data
       const hops = parseTracerouteOutput(rawOutput, target);
       
+      // Add placeholder geo data for visualization
+      const hopsWithGeo = hops.map((hop, index) => ({
+        ...hop,
+        geo: generatePlaceholderGeo(index, hops.length)
+      }));
+      
       // Update hops progressively for UI feedback
-      for (let i = 0; i < hops.length; i++) {
+      for (let i = 0; i < hopsWithGeo.length; i++) {
         await new Promise((resolve) => setTimeout(resolve, 100)); // Small delay for visual effect
-        setCurrentHops((prev) => [...prev, hops[i]]);
+        setCurrentHops((prev) => [...prev, hopsWithGeo[i]]);
       }
 
       setResult({
         target,
         resolvedIp: target, // In a real implementation, this would be resolved from DNS
-        hops,
+        hops: hopsWithGeo,
         rawOutput,
         startTime,
         endTime: new Date(),
