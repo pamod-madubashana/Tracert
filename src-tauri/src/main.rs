@@ -272,7 +272,7 @@ async fn execute_trace_with_cancel(
                     Ok(Some(line)) => {
                         stdout_lines_read += 1;
                         if stdout_lines_read <= max_diag_lines {
-                            tracing::debug!("[TRACE] stdout line {}: {}", stdout_lines_read, line);
+                            tracing::info!("[TRACE] stdout line {}: {}", stdout_lines_read, line);
                         }
                         // Emit event for UI update
                         emit_trace_line(&app, &trace_id, stdout_lines_read, &line);
@@ -788,10 +788,7 @@ fn main() {
                 tauri::RunEvent::WindowEvent { label, event, .. } => {
                     tracing::debug!("[LIFECYCLE] Window event - {}: {:?}", label, event);
                 }
-                _ => {
-                    // Handle all other events
-                    tracing::debug!("[LIFECYCLE] Other event: {:?}", event);
-                }
+                _ => {}
             }
         });
         
