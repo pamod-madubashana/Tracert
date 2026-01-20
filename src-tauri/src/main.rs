@@ -810,20 +810,6 @@ fn main() {
             tracing::info!("[LIFECYCLE] App setup completed, PID={}", std::process::id());
             Ok(())
         })
-        .on_window_event(|window, event| {
-            match event {
-                tauri::WindowEvent::CloseRequested { .. } => {
-                    tracing::info!("[WINDOW] Close requested for window: {}", window.label());
-                }
-                tauri::WindowEvent::Destroyed => {
-                    tracing::info!("[WINDOW] Window destroyed: {}", window.label());
-                }
-                _ => {
-                    // Other events, log them if needed
-                    tracing::debug!("[WINDOW] Window event for '{}': {:?}", window.label(), event);
-                }
-            }
-        })
         .build(tauri::generate_context!())
         .expect("Failed to build tauri app")
         .run(|_app_handle, event| {
