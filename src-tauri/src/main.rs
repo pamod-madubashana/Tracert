@@ -183,9 +183,11 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
         }
         }
         _ = cancel_notify.notified() => {
-        let _ = child.kill().await;
-        return Err("Trace cancelled by user".to_string());
-        }
+            let _ = child.kill().await;
+            tracing::debug!("raw_output bytes: {}", raw_output.len());
+            tracing::debug!("raw_output preview: {}", raw_output.lines().take(5).collect::<Vec<_>>().join(" | "));
+            return Err("Trace cancelled by user".to_string());
+            }
     }
     }
     
