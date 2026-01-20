@@ -287,18 +287,6 @@ fn prepare_trace_command(target: &str, options: &TraceOptions) -> Result<(String
     Ok((cmd, args))
 }
 
-fn parse_traceroute_output(output: &str, _target: &str) -> Result<Vec<HopData>, String> {
-    let mut hops = Vec::new();
-    
-    for line in output.lines() {
-        if let Some(hop_data) = parse_traceroute_line(line) {
-            hops.push(hop_data);
-        }
-    }
-    
-    Ok(hops)
-}
-
 fn parse_traceroute_line(line: &str) -> Option<HopData> {
     // Windows tracert format: " 1    <time> ms    <time> ms    <time> ms     <ip>"
     // Or: " 1    *        *        *     Request timed out."
