@@ -10,16 +10,15 @@ interface InputPanelProps {
 const InputPanel = ({ onTrace, isTracing, compact = false }: InputPanelProps) => {
   const [target, setTarget] = useState("8.8.8.8");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleTraceClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    if (target.trim()) {
-      onTrace(target.trim());
-    }
+    e.stopPropagation();
+    if (target.trim()) onTrace(target.trim());
   };
 
   if (compact) {
     return (
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <div className="flex gap-3">
         <div className="flex-1 relative">
           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">
             {">"}_
@@ -34,7 +33,8 @@ const InputPanel = ({ onTrace, isTracing, compact = false }: InputPanelProps) =>
           />
         </div>
         <button
-          type="submit"
+          type="button"
+          onClick={handleTraceClick}
           disabled={isTracing || !target.trim()}
           className="cyber-button !px-3 !py-1.5 flex items-center gap-1.5 text-sm disabled:opacity-50"
         >
@@ -50,7 +50,7 @@ const InputPanel = ({ onTrace, isTracing, compact = false }: InputPanelProps) =>
             </>
           )}
         </button>
-      </form>
+      </div>
     );
   }
 
@@ -63,7 +63,7 @@ const InputPanel = ({ onTrace, isTracing, compact = false }: InputPanelProps) =>
         </span>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-3">
+      <div className="flex gap-3">
         <div className="flex-1 relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
             {">"}_
@@ -78,7 +78,8 @@ const InputPanel = ({ onTrace, isTracing, compact = false }: InputPanelProps) =>
           />
         </div>
         <button
-          type="submit"
+          type="button"
+          onClick={handleTraceClick}
           disabled={isTracing || !target.trim()}
           className="cyber-button flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -94,7 +95,7 @@ const InputPanel = ({ onTrace, isTracing, compact = false }: InputPanelProps) =>
             </>
           )}
         </button>
-      </form>
+      </div>
     </div>
   );
 };
