@@ -14,6 +14,29 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tracing_subscriber::Layer;
 
+
+use tauri::{AppHandle, Manager};
+use serde::Serialize;
+
+#[derive(Serialize, Clone)]
+struct TraceLineEvent {
+  trace_id: String,
+  line_no: u32,
+  line: String,
+}
+
+fn emit_trace_line(app: &AppHandle, trace_id: &str, line_no: u32, line: &str) {
+  let payload = TraceLineEvent {
+    trace_id: trace_id.to_string(),
+    line_no,
+    line: line.to_string(),
+  };
+
+  // emit to all windows (easy mode)
+  let _ = app.emit("trace:line", payload);
+}
+
+
 // Global variables for single instance guard
 static mut LOCK_FILE_PATH: Option<std::path::PathBuf> = None;
 static SINGLE_INSTANCE_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -153,6 +176,7 @@ struct AppState {
 
 #[tauri::command]
 async fn run_trace(
+    app: tauri::AppHandle,
     target: String,
     options: TraceOptions,
     state: tauri::State<'_, AppState>,
@@ -276,6 +300,7 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
                         stdout_lines_read += 1;
                         if stdout_lines_read <= max_diag_lines {
                             tracing::debug!("[TRACE] stdout line {}: {}", stdout_lines_read, line);
+                            emit_trace_line(&app, &trace_id, n, &line);
                         }
                         raw_output.push_str(&line);
                         raw_output.push('\n');
