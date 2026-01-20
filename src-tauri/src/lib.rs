@@ -9,6 +9,7 @@ pub fn run() {
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![run_traceroute])
     .setup(|app| {
+      println!("SETUP PID={}", std::process::id());
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
