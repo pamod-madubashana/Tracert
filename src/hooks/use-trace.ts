@@ -16,61 +16,28 @@ declare global {
   }
 }
 
-// Regular expressions for parsing different traceroute output formats
+// Improved parser for different traceroute output formats
 const parseTracerouteOutput = (output: string, target: string): HopData[] => {
-  const lines = output.split("\n");
+  const lines = output.split(/\r?\n/);
   const hops: HopData[] = [];
   
-  // Regex patterns for different OS traceroute formats
-  const windowsPattern = /^\s*(\d+)\s+(?:<(\d+)ms|\*)\s+(?:<(\d+)ms|\*)\s+(?:<(\d+)ms|\*)\s+(.+)$/;
-  const unixPattern = /^\s*(\d+)\s+(.+)\s+((?:\d+\.\d+\s+ms\s+){2,}(?:\d+\.\d+\s+ms|\*))$/;
-  
   for (const line of lines) {
-    // Parse Windows format: 1    <1 ms    <1 ms    <1 ms     192.168.1.1
-    const winMatch = line.match(windowsPattern);
-    if (winMatch) {
-      const [, hopStr, ms1, ms2, ms3, hostPart] = winMatch;
-      const hopNum = parseInt(hopStr);
-      
-      // Extract host/IP from the last part
-      const hostParts = hostPart.trim().split(/[\s]+/);
-      const ip = hostParts[hostParts.length - 1]?.replace(/[\[\]]/g, "") || "";
-      const host = hostParts.length > 1 ? hostParts.slice(0, -1).join(" ") : undefined;
-      
-      const latencies: (number | "*")[] = [];
-      if (ms1 !== undefined) latencies.push(ms1 === "*" ? "*" : parseInt(ms1));
-      if (ms2 !== undefined) latencies.push(ms2 === "*" ? "*" : parseInt(ms2));
-      if (ms3 !== undefined) latencies.push(ms3 === "*" ? "*" : parseInt(ms3));
-      
-      const hasTimeout = latencies.some(lat => lat === "*");
-      
-      const hop: HopData = {
-        hop: hopNum,
-        host,
-        ip,
-        latencies,
-        status: hasTimeout ? "timeout" : "success",
-      };
-      
-      if (!hasTimeout) {
-        const nums = latencies.filter(l => typeof l === "number") as number[];
-        if (nums.length > 0) {
-          const avg = Math.round(nums.reduce((sum, val) => sum + val, 0) / nums.length);
-          hop.avgLatency = avg;
-        }
-      }
-      
-      hops.push(hop);
+    // Try Windows format first
+    const winHop = parseWindowsHop(line);
+    if (winHop) {
+      hops.push(winHop);
+      continue;
     }
     
     // Parse Unix format: 1  192.168.1.1  0.500 ms  0.400 ms  0.300 ms
+    const unixPattern = /^\s*(\d+)\s+(.+)?\s+((?:\d+\.\d+\s+ms\s+){2,}(?:\d+\.\d+\s+ms|\*))$/;
     const unixMatch = line.match(unixPattern);
     if (unixMatch) {
       const [, hopStr, hostPart, msPart] = unixMatch;
       const hopNum = parseInt(hopStr);
       
       // Parse host and IP
-      const hostParts = hostPart.trim().split(/[\s]+/);
+      const hostParts = hostPart ? hostPart.trim().split(/[\s]+/) : [];
       let ip = "";
       let host = "";
       
@@ -80,7 +47,7 @@ const parseTracerouteOutput = (output: string, target: string): HopData[] => {
           ip = lastPart;
           host = hostParts.length > 1 ? hostParts.slice(0, -1).join(" ") : undefined;
         } else {
-          host = hostPart.trim();
+          host = hostPart?.trim();
         }
       }
       
@@ -120,6 +87,62 @@ const parseTracerouteOutput = (output: string, target: string): HopData[] => {
   return hops;
 };
 
+// Robust Windows tracert line parser
+const parseWindowsHop = (line: string): HopData | null => {
+  // Example:
+  //  1    <1 ms    <1 ms    <1 ms  192.168.1.1
+  //  2     *        *        *     Request timed out.
+  //  3    12 ms    11 ms    13 ms  router [192.168.1.1]
+
+  const m = line.match(/^\s*(\d+)\s+(.*)$/);
+  if (!m) return null;
+
+  const hop = parseInt(m[1], 10);
+  const rest = m[2];
+
+  // Grab three latency "tokens" (either "*", "<1 ms", "12 ms")
+  const latencyTokens = rest.match(/(\*|<\s*\d+\s*ms|\d+\s*ms)/gi);
+  if (!latencyTokens || latencyTokens.length < 3) return null;
+
+  const latencies: (number | "*")[] = latencyTokens.slice(0, 3).map(t => {
+    const cleaned = t.replace(/\s+/g, "").toLowerCase(); // "<1ms" or "12ms" or "*"
+    if (cleaned === "*") return "*";
+    const num = parseInt(cleaned.replace(/[<ms]/g, ""), 10);
+    return Number.isNaN(num) ? "*" : num;
+  });
+
+  const afterLatencies = rest.split(latencyTokens.slice(0, 3).join("")).pop()?.trim() ?? rest;
+
+  // Timeout line
+  if (/request timed out/i.test(rest)) {
+    return { hop, latencies, status: "timeout" };
+  }
+
+  // Extract IP from brackets or last token
+  const ipBracket = rest.match(/\[([0-9a-fA-F:.]+)\]/);
+  const ipLoose = rest.match(/((?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:.]{2,})/);
+
+  const ip = ipBracket?.[1] ?? ipLoose?.[1];
+  let host: string | undefined;
+
+  if (ipBracket) {
+    host = rest.split("[")[0].trim().split(/\s+/).slice(3).join(" ").trim() || undefined;
+  }
+
+  const hasTimeout = latencies.some(l => l === "*");
+  const nums = latencies.filter(l => typeof l === "number") as number[];
+  const avgLatency = nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : undefined;
+
+  return {
+    hop,
+    host,
+    ip,
+    latencies,
+    status: hasTimeout ? "timeout" : "success",
+    avgLatency,
+  };
+};
+
 const isValidIP = (str: string): boolean => {
   // Simple regex for IPv4
   const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -145,8 +168,13 @@ export const useTraceSimulation = () => {
       let rawOutput: string;
       
       // Use Tauri invoke
-      if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      const isTauri =
+        typeof window !== "undefined" &&
+        typeof (window as any).__TAURI_INTERNALS__ !== "undefined";
+      
+      if (isTauri) {
         rawOutput = await (window as any).__TAURI__.invoke("run_traceroute", { target });
+        console.log("RAW OUTPUT START", rawOutput.slice(0, 200));
       } else {
         // Fallback for browser development
         rawOutput = `Tracing route to ${target} [${target}]
@@ -157,6 +185,7 @@ over a maximum of 30 hops:
   3     3 ms     2 ms     2 ms  ${target} [${target}]
 
 Trace complete.`;
+        console.log("USING FALLBACK MOCK OUTPUT");
       }
       
       // Parse the output to extract hop data
