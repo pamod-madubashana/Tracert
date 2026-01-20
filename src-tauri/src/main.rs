@@ -814,19 +814,6 @@ fn main() {
                 tauri::WindowEvent::Destroyed => {
                     tracing::info!("[WINDOW] Window destroyed: {}", window.label());
                 }
-                tauri::WindowEvent::Focused(focused) => {
-                    if *focused {
-                        tracing::info!("[WINDOW] Window focused: {}", window.label());
-                    } else {
-                        tracing::info!("[WINDOW] Window unfocused: {}", window.label());
-                    }
-                }
-                tauri::WindowEvent::Moved(_) => {
-                    tracing::info!("[WINDOW] Window moved: {}", window.label());
-                }
-                tauri::WindowEvent::Resized(_) => {
-                    tracing::info!("[WINDOW] Window resized: {}", window.label());
-                }
                 _ => {
                     // Other events, log them if needed
                     tracing::debug!("[WINDOW] Window event for '{}': {:?}", window.label(), event);
