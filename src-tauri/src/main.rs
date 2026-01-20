@@ -112,17 +112,16 @@ async fn run_trace(
     }
     
     // Wait for completion
-    let result = {
-        let running_traces = state.running_traces.lock().await;
-        let running_trace = running_traces.get(&trace_id)
-            .ok_or_else(|| "Trace not found in running traces".to_string())?;
-        let handle = running_trace.handle.abort_handle();
-        drop(running_traces);
-        
-        match handle.await {
-            Ok(res) => res?,
-            Err(_) => return Err("Trace task was cancelled".to_string()),
-        }
+    let running_trace = {
+    let mut running_traces = state.running_traces.lock().await;
+    running_traces
+        .remove(&trace_id)
+        .ok_or_else(|| "Trace not found in running traces".to_string())?
+    };
+
+    let result = match running_trace.handle.await {
+        Ok(res) => res?, // res is Result<TraceResult, String>
+        Err(_) => return Err("Trace task join failed (cancelled/panicked)".to_string()),
     };
     
     // Clean up from running traces
