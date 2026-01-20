@@ -124,12 +124,6 @@ async fn run_trace(
         Err(_) => return Err("Trace task join failed (cancelled/panicked)".to_string()),
     };
     
-    // Clean up from running traces
-    {
-        let mut running_traces = state.running_traces.lock().await;
-        running_traces.remove(&trace_id);
-    }
-    
     return Ok(result);
 
     // Parse the output
