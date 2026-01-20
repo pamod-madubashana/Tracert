@@ -42,15 +42,9 @@ fn run_traceroute(target: String) -> Result<String, String> {
     let handle = thread::spawn(move || {
         let result = match std::env::consts::OS {
             "windows" => {
-                let mut cmd = Command::new("tracert");
-                cmd.args(["-d", &target_clone]);
-
-                #[cfg(windows)]
-                {
-                    cmd.creation_flags(CREATE_NO_WINDOW);
-                }
-
-                cmd.output()
+                let cmd_result = Command::new("tracert")
+                    .arg(&target_clone)
+                    .output();
             }
             _ => {
                 // Unix-like systems: try traceroute first, fallback to tracepath
