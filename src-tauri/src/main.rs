@@ -8,12 +8,10 @@ use std::sync::Arc;
 use std::sync::Once;
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tracing::info;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use std::process::Stdio;
-use sysinfo::{System, SystemExt};
+use sysinfo::{System, SystemExt, ProcessExt};
 use std::env;
-use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // Global variables for single instance guard
@@ -269,7 +267,7 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
     // Counters for diagnostic purposes
     let mut stdout_lines_read = 0;
     let mut stderr_lines_read = 0;
-    let mut max_diag_lines = 10; // Only log first N lines to avoid spam
+    let max_diag_lines = 10; // Only log first N lines to avoid spam
     
     loop {
         tokio::select! {
@@ -799,6 +797,7 @@ fn main() {
                         tracing::debug!("[LIFECYCLE] App event: {:?}", event);
                     }
                 }
+                Ok(()) // Adding this to fix the return type issue
             })
         })
         .expect("error while running tauri application");
