@@ -37,11 +37,15 @@ export const useTrace = () => {
   const { startTrace: startSimTrace } = useTraceSimulation();
 
   const startTrace = useCallback(async (target: string, options: TraceOptions = {}) => {
+    logger.debug(`startTrace called with target: ${target}, options:`, options);
+    
     // Use simulation mode if requested
     if (useSimulation) {
+      logger.info('Using simulation mode for tracing');
       return startSimTrace(target);
     }
 
+    logger.info('Starting real traceroute to:', target);
     setIsTracing(true);
     setCurrentHops([]);
     setResult(null);
@@ -49,6 +53,8 @@ export const useTrace = () => {
 
     try {
       const startTime = new Date();
+      
+      logger.debug('Invoking run_trace command with:', { target, options });
       
       // Call Tauri command for real traceroute
       const traceResult = await invoke<TraceResult>("run_trace", {
@@ -61,11 +67,16 @@ export const useTrace = () => {
         }
       });
 
+      logger.debug('Received trace result:', traceResult);
+      
       // Validate the result before using it
       if (!traceResult || !Array.isArray(traceResult.hops)) {
+        logger.error('Invalid trace result structure:', traceResult);
         throw new Error("Invalid trace result received from backend");
       }
 
+      logger.info(`Trace completed successfully with ${traceResult.hops.length} hops`);
+      
       // Update state with real results
       setCurrentHops(traceResult.hops);
       setResult({
@@ -91,10 +102,17 @@ export const useTrace = () => {
   }, [useSimulation, startSimTrace]);
 
   const stopTrace = useCallback(async () => {
-    if (!isTracing || useSimulation) return;
+    logger.debug(`stopTrace called, isTracing: ${isTracing}, useSimulation: ${useSimulation}`);
+    
+    if (!isTracing || useSimulation) {
+      logger.debug('Skipping stopTrace - not tracing or using simulation');
+      return;
+    }
 
     try {
+      logger.info('Attempting to stop current trace');
       await invoke("stop_trace");
+      logger.info('Successfully sent stop command');
     } catch (err) {
       logger.error("Failed to stop trace:", err);
     }
