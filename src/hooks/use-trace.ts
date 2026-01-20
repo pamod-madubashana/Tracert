@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { HopData, TraceResult, GeoLocation } from "@/types/trace";
-
+import { invoke, isTauri } from "@tauri-apps/api/core";
 // Type declaration for Tauri invoke
 interface Window {
   __TAURI__: {
@@ -214,10 +214,6 @@ export const useTraceSimulation = () => {
       let rawOutput: string;
       
       // Use Tauri invoke - proper Tauri v2 detection
-      const isTauri =
-        typeof window !== "undefined" &&
-        typeof (window as any).__TAURI_INTERNALS__ !== "undefined";
-      
       if (isTauri) {
         rawOutput = await (window as any).__TAURI__.invoke("run_traceroute", { target });
         console.log("REAL TRACEROUTE OUTPUT START", rawOutput.slice(0, 200));
