@@ -44,13 +44,42 @@ export const useTrace = () => {
   // When using simulation, proxy the simulation hook's state
   const effectiveIsTracing = useSimulation ? isSimTracing : isTracing;
   const effectiveResult = useSimulation ? simResult : result;
-  const effectiveHops = useSimulation ? simHops : currentHops;
+  
+  // Process streaming lines to update hops in real-time when not using simulation
+  useEffect(() => {
+    if (useSimulation || !lines || lines.length === 0 || !isTracing) return;
+    
+    // Parse the streaming lines to update hops in real-time
+    const newHops: HopData[] = [];
+    
+    lines.forEach((lineEvent) => {
+      const hopData = parseTracerouteLine(lineEvent.line);
+      if (hopData) {
+        // Check if this hop already exists to avoid duplicates
+        const existingIndex = newHops.findIndex(h => h.hop === hopData.hop);
+        if (existingIndex >= 0) {
+          newHops[existingIndex] = hopData; // Update existing hop
+        } else {
+          newHops.push(hopData); // Add new hop
+        }
+      }
+    });
+    
+    // Sort hops by hop number
+    newHops.sort((a, b) => a.hop - b.hop);
+    
+    setCurrentHops(newHops);
+  }, [lines, useSimulation, isTracing]);
+  
+  // Use real-time hops during tracing, final result hops after completion
+  const effectiveHops = useSimulation ? simHops : (isTracing ? currentHops : (result ? result.hops : currentHops));
   
   // Handle completion event from backend
   useEffect(() => {
     if (completion && !useSimulation) {
       logger.info('Received trace completion event, updating state');
       setResult(completion.result);
+      // Update currentHops with the final result when trace completes
       setCurrentHops(completion.result.hops);
       setIsTracing(false);
       setActiveTraceId(null);
@@ -123,7 +152,9 @@ export const useTrace = () => {
 
     try {
       logger.info('Attempting to stop current trace');
-      await invoke("stop_trace");
+      if (activeTraceId) {
+        await invoke("stop_trace", { trace_id: activeTraceId });
+      }
       logger.info('Successfully sent stop command');
       setIsTracing(false);
       setActiveTraceId(null);
@@ -146,6 +177,77 @@ export const useTrace = () => {
     streamingLines // New: expose the real-time streaming lines
   };
 };
+
+// Simple parser for traceroute output lines
+function parseTracerouteLine(line: string): HopData | undefined {
+  // Trim the line
+  const trimmedLine = line.trim();
+  
+  // Skip empty lines and header lines
+  if (!trimmedLine || 
+      trimmedLine.startsWith("Tracing") || 
+      trimmedLine.startsWith("over a maximum") || 
+      trimmedLine.startsWith("Trace complete")) {
+    return undefined;
+  }
+  
+  // Split into parts
+  const parts = trimmedLine.split(/\s+/);
+  if (parts.length < 2) return undefined;
+  
+  // Extract hop number
+  const hopNum = parseInt(parts[0]);
+  if (isNaN(hopNum)) return undefined;
+  
+  // Check for timeout
+  if (trimmedLine.includes("Request timed out")) {
+    return {
+      hop: hopNum,
+      host: undefined,
+      ip: undefined,
+      latencies: [undefined, undefined, undefined],
+      avgLatency: undefined,
+      status: "timeout"
+    };
+  }
+  
+  // Extract latencies and IP
+  const latencies: (number | "*")[] = [];
+  let ipPart: string | undefined = undefined;
+  
+  // Look for latency values and IP address
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+      
+    if (part.endsWith("ms")) {
+      const timeStr = part.slice(0, -2).replace("<", "");
+      const time = parseFloat(timeStr);
+      latencies.push(isNaN(time) ? "*" : time);
+    } else if (part === "*") {
+      latencies.push("*");
+    } else if (!part.endsWith("ms") && part !== "ms" && part !== "*" && !isNaN(parseFloat(part))) {
+      // Likely an IP address or host
+      if (part.includes('.') || part.includes(':')) {
+        ipPart = part;
+      }
+    }
+  }
+    
+  // Calculate average latency
+  const validLatencies = latencies.filter(lat => lat !== "*") as number[];
+  const avgLatency = validLatencies.length > 0 
+    ? validLatencies.reduce((sum, val) => sum + val, 0) / validLatencies.length
+    : undefined;
+    
+  return {
+    hop: hopNum,
+    host: undefined,
+    ip: ipPart,
+    latencies,
+    avgLatency,
+    status: validLatencies.length > 0 ? "success" : "timeout"
+  };
+}
 
 // Export the original simulation hook for explicit usage
 export { useTraceSimulation };
