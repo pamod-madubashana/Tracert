@@ -476,12 +476,13 @@ fn main() {
         .manage(AppState {
             running_traces: Arc::new(Mutex::new(HashMap::new())),
         })
-        .invoke_handler(tauri::generate_handler![run_trace, stop_trace])
         .invoke_handler(tauri::generate_handler![
+            run_trace,
+            stop_trace,
             log_debug,
             log_info,
             log_warn,
-            log_error
+            log_error,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
