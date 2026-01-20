@@ -59,10 +59,10 @@ pub struct TraceOptions {
     pub resolve_dns: Option<bool>,
 }
 
-use tokio_util::sync::CancellationToken;
+use tokio::sync::Notify;
 
 struct RunningTrace {
-    cancel_token: CancellationToken,
+    cancel_notify: Arc<Notify>,
     handle: tokio::task::JoinHandle<Result<TraceResult, String>>,
 }
 
