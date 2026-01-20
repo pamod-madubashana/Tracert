@@ -10,7 +10,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use std::process::Stdio;
-use sysinfo::{System, SystemExt, ProcessExt};
+use sysinfo::{System, SystemExt, ProcessExt, PidExt};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -650,7 +650,12 @@ fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
     let file_appender = rolling::daily(&log_dir, "tracert.log");
     
     let pid = std::process::id();
-    let timer = tracing_subscriber::fmt::time::OffsetTime::local_rfc_3339().unwrap_or(tracing_subscriber::fmt::time::SystemTime);
+    // Use the correct way to create an OffsetTime with local timezone
+    let offset = chrono::Local::now().offset().fix();
+    let timer = tracing_subscriber::fmt::time::OffsetTime::new(
+        offset,
+        tracing_subscriber::fmt::time::FormatTime::rfc_3339
+    );
     
     let file_layer = fmt::layer()
         .with_timer(timer.clone())
@@ -737,6 +742,17 @@ fn main() {
     tracing::info!("[LIFECYCLE] Setup complete, PID={}", pid);
     
     tauri::Builder::default()
+        .manage(AppState {
+            running_traces: Arc::new(Mutex::new(HashMap::new())),
+        })
+        .invoke_handler(tauri::generate_handler![
+            run_trace,
+            stop_trace,
+            log_debug,
+            log_info,
+            log_warn,
+            log_error,
+        ])
         .setup(|app| {
             tracing::info!("[LIFECYCLE] App setup completed, PID={}", std::process::id());
             Ok(())
@@ -768,39 +784,23 @@ fn main() {
                 }
             }
         })
-        .manage(AppState {
-            running_traces: Arc::new(Mutex::new(HashMap::new())),
-        })
-        .invoke_handler(tauri::generate_handler![
-            run_trace,
-            stop_trace,
-            log_debug,
-            log_info,
-            log_warn,
-            log_error,
-        ])
         .build(tauri::generate_context!())
-        .and_then(|app| {
-            tracing::info!("[LIFECYCLE] App built successfully, PID={}", std::process::id());
-            app.run(|_app_handle, event| {
-                match event {
-                    tauri::RunEvent::ExitRequested { .. } => {
-                        tracing::info!("[LIFECYCLE] Exit requested, PID={}", std::process::id());
-                    }
-                    tauri::RunEvent::Ready => {
-                        tracing::info!("[LIFECYCLE] App ready, PID={}", std::process::id());
-                    }
-                    tauri::RunEvent::WindowEvent { label, event, .. } => {
-                        tracing::debug!("[LIFECYCLE] Window event - {}: {:?}", label, event);
-                    }
-                    _ => {
-                        tracing::debug!("[LIFECYCLE] App event: {:?}", event);
-                    }
+        .run(|app_handle, event| {
+            match event {
+                tauri::RunEvent::ExitRequested { .. } => {
+                    tracing::info!("[LIFECYCLE] Exit requested, PID={}", std::process::id());
                 }
-                Ok(()) // Adding this to fix the return type issue
-            })
-        })
-        .expect("error while running tauri application");
+                tauri::RunEvent::Ready => {
+                    tracing::info!("[LIFECYCLE] App ready, PID={}", std::process::id());
+                }
+                tauri::RunEvent::WindowEvent { label, event, .. } => {
+                    tracing::debug!("[LIFECYCLE] Window event - {}: {:?}", label, event);
+                }
+                _ => {
+                    tracing::debug!("[LIFECYCLE] App event: {:?}", event);
+                }
+            }
+        });
         
     tracing::info!("[LIFECYCLE] App shutting down, PID={}", pid);
 }
