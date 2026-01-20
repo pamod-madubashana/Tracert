@@ -88,14 +88,18 @@ async fn run_trace(
     let trace_id = uuid::Uuid::new_v4().to_string();
     
     // Create notification for cancellation
-    let cancel_notify = Arc::new(Notify::new());
     let cancel_clone = cancel_notify.clone();
     
+
+    let cancel_notify = Arc::new(Notify::new());
+    let cancel_for_task = cancel_notify.clone();
+    let cancel_for_exec = cancel_notify.clone();
     // Execute the traceroute command in a cancellable task
     let trace_future = execute_trace_with_cancel(cmd, args, cancel_clone);
     let handle = tokio::spawn(async move {
         tokio::select! {
             result = trace_future => result,
+            _ = cancel_for_task.notified() => Err("Trace cancelled by user".to_string()),
         }
     });
     
