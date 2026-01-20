@@ -2,7 +2,6 @@
 
 use regex::Regex;
 use std::process::Command;
-use std::time::Duration;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
