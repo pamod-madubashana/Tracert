@@ -5,11 +5,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tracing::{info, error};
+use tracing::info;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use std::process::Stdio;
-use futures::stream::StreamExt;
-use lazy_static::lazy_static;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GeoLocation {
@@ -124,17 +122,6 @@ async fn run_trace(
         Err(_) => return Err("Trace task join failed (cancelled/panicked)".to_string()),
     };
     
-    return Ok(result);
-
-    // Parse the output
-    let hops = parse_traceroute_output(&output, &target)?;
-    
-    let raw_output = output;
-    let start_time = chrono::Utc::now().to_rfc3339();
-    let end_time = Some(chrono::Utc::now().to_rfc3339());
-
-    // The actual implementation is now in execute_trace_with_cancel
-    unreachable!()
 }
 
 async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify: Arc<Notify>) -> Result<TraceResult, String> {
@@ -201,7 +188,7 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
 
 #[tauri::command]
 async fn stop_trace(trace_id: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let mut running_traces = state.running_traces.lock().await;
+    let running_traces = state.running_traces.lock().await;
     if let Some(running_trace) = running_traces.get(&trace_id) {
         running_trace.cancel_notify.notify_one();
         Ok(())
