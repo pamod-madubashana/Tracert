@@ -441,14 +441,14 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
                     if next_part.starts_with('(') && next_part.ends_with(')') {
                         // Format is host (ip) or ip (ip)
                         host_part = Some((*ip_or_host).to_string());
-                        let clean_ip = next_part.strip_prefix('(')?.strip_suffix(')?;
+                        let clean_ip = next_part.strip_prefix('(')?.strip_suffix(')')?;
                         ip_part = Some(clean_ip.to_string());
                     } else {
                         // Just IP
                         ip_part = Some((*ip_or_host).to_string());
                         // Check if next part is in parentheses (hostname)
                         if next_part.starts_with('(') && next_part.ends_with(')') {
-                            let clean_host = next_part.strip_prefix('(')?.strip_suffix(')?;
+                            let clean_host = next_part.strip_prefix('(')?.strip_suffix(')')?;
                             host_part = Some(clean_host.to_string());
                             iter.next(); // Skip the parenthesized part
                         }
