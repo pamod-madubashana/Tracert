@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback , useRef} from "react";
 import { HopData, TraceResult, GeoLocation } from "@/types/trace";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
@@ -184,12 +184,18 @@ const generatePlaceholderGeo = (index: number, totalHops: number): GeoLocation =
   };
 };
 
+
+
 export const useTrace = () => {
   const [isTracing, setIsTracing] = useState(false);
   const [result, setResult] = useState<TraceResult | null>(null);
   const [currentHops, setCurrentHops] = useState<HopData[]>([]);
+  const tracingRef = useRef(false);
 
   const startTrace = useCallback(async (target: string) => {
+    // Prevent multiple simultaneous traces
+    if (tracingRef.current) return;
+    tracingRef.current = true;
     setIsTracing(true);
     setCurrentHops([]);
     setResult(null);
@@ -234,6 +240,7 @@ export const useTrace = () => {
       });
     } finally {
       setIsTracing(false);
+      tracingRef.current = false;
     }
   }, []);
 
