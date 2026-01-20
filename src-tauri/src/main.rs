@@ -650,21 +650,13 @@ fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
     let file_appender = rolling::daily(&log_dir, "tracert.log");
     
     let pid = std::process::id();
-    // Use the correct way to create an OffsetTime with local timezone
-    let offset = chrono::Local::now().offset().fix();
-    let timer = tracing_subscriber::fmt::time::OffsetTime::new(
-        offset,
-        tracing_subscriber::fmt::time::FormatTime::rfc_3339
-    );
-    
+    // Use system time instead of local offset since there are API issues
     let file_layer = fmt::layer()
-        .with_timer(timer.clone())
-        .with_writer(file_appender)
         .with_ansi(false)
+        .with_writer(file_appender)
         .with_filter(EnvFilter::from_default_env().add_directive("trace_rt=debug".parse()?));
         
     let console_layer = fmt::layer()
-        .with_timer(timer)
         .with_writer(std::io::stderr)
         .with_filter(EnvFilter::from_default_env().add_directive("trace_rt=debug".parse()?));
     
@@ -785,6 +777,7 @@ fn main() {
             }
         })
         .build(tauri::generate_context!())
+        .expect("Failed to build tauri app")
         .run(|app_handle, event| {
             match event {
                 tauri::RunEvent::ExitRequested { .. } => {
