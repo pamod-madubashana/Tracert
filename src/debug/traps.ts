@@ -30,7 +30,15 @@ export function installTraps() {
     // @ts-ignore
     return origReplaceState.apply(this, args);
   };
-
+  const oldReplaceState = history.replaceState.bind(history);
+  history.replaceState = function (...args) {
+    const url = args[2];
+    if (typeof url === "string" && url.startsWith("http")) {
+      // log only suspicious ones
+    }
+    return oldReplaceState(...args as any);
+  };
+  
   window.addEventListener("popstate", () => {
     void log("warn", `[TRAP] popstate fired: href=${location.href}`);
   });

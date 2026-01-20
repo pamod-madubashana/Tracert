@@ -157,7 +157,10 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
 
     // Create a future that monitors both the process and the cancellation
     let stdout = child.stdout.take().ok_or_else(|| "Failed to get stdout".to_string())?;
-    let mut reader = BufReader::new(stdout).lines();
+    let stderr = child.stderr.take().ok_or_else(|| "Failed to get stderr".to_string())?;
+
+    let mut out_reader = BufReader::new(stdout).lines();
+    let mut err_reader = BufReader::new(stderr).lines();
     
     let mut raw_output = String::new();
     let mut hops = Vec::new();
@@ -165,27 +168,25 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
     
     loop {
         tokio::select! {
-            line_result = reader.next_line() => {
-                match line_result {
-                    Ok(Some(line)) => {
-                        raw_output.push_str(&line);
-                        raw_output.push('\n');
-                        
-                        // Parse the line for hop data if it looks like a traceroute line
-                        if let Some(hop_data) = parse_traceroute_line(&line) {
-                            hops.push(hop_data);
-                        }
-                    },
-                    Ok(None) => break, // EOF reached
-                    Err(e) => return Err(format!("Error reading output: {}", e)),
-                }
-            },
-            _ = cancel_notify.notified() => {
-                // Cancel the process
-                let _ = child.kill().await;
-                return Err("Trace cancelled by user".to_string());
-            }
+        line = out_reader.next_line() => {
+        match line {
+            Ok(Some(line)) => { /* push + parse */ }
+            Ok(None) => { /* stdout closed */ }
+            Err(e) => return Err(format!("stdout read error: {e}")),
         }
+        }
+        line = err_reader.next_line() => {
+        match line {
+            Ok(Some(line)) => { /* push + parse */ }
+            Ok(None) => { /* stderr closed */ }
+            Err(e) => return Err(format!("stderr read error: {e}")),
+        }
+        }
+        _ = cancel_notify.notified() => {
+        let _ = child.kill().await;
+        return Err("Trace cancelled by user".to_string());
+        }
+    }
     }
     
     // Wait for the process to finish
