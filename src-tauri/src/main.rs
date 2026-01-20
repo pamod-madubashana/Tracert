@@ -13,6 +13,7 @@ use std::process::Stdio;
 use sysinfo::{System, SystemExt, ProcessExt, PidExt};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tracing_subscriber::Layer;
 
 // Global variables for single instance guard
 static mut LOCK_FILE_PATH: Option<std::path::PathBuf> = None;
@@ -745,7 +746,7 @@ fn main() {
             log_warn,
             log_error,
         ])
-        .setup(|app| {
+        .setup(|_app| {
             tracing::info!("[LIFECYCLE] App setup completed, PID={}", std::process::id());
             Ok(())
         })
@@ -778,7 +779,7 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("Failed to build tauri app")
-        .run(|app_handle, event| {
+        .run(|_app_handle, event| {
             match event {
                 tauri::RunEvent::ExitRequested { .. } => {
                     tracing::info!("[LIFECYCLE] Exit requested, PID={}", std::process::id());
