@@ -122,6 +122,7 @@ async fn run_trace(
         Err(_) => return Err("Trace task join failed (cancelled/panicked)".to_string()),
     };
     
+    Ok(result)
 }
 
 async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify: Arc<Notify>) -> Result<TraceResult, String> {
