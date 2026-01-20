@@ -10,7 +10,7 @@ import { useTrace } from "@/hooks/use-trace";
 
 const Index = () => {
   const [target, setTarget] = useState("");
-  const { isTracing, result, currentHops, startTrace } = useTrace();
+  const { isTracing, result, currentHops, startTrace, streamingLines } = useTrace();
 
   const handleTrace = (newTarget: string) => {
     setTarget(newTarget);
@@ -45,14 +45,18 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Right column: World Map + Terminal */}
+          {/* Right column: World Map + Streaming Terminal */}
           <div className="flex flex-col gap-2 overflow-hidden">
             <div className="flex-1 min-h-0">
               <WorldMap hops={currentHops} compact />
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
+              {/* Show streaming output in real-time, fall back to final result */}
               <TerminalOutput 
-                output={result?.rawOutput || ""} 
+                output={streamingLines.length > 0 
+                  ? streamingLines.map(l => l.line).join('\n')
+                  : result?.rawOutput || ""
+                } 
                 target={target}
                 compact
               />

@@ -180,7 +180,7 @@ async fn run_trace(
     target: String,
     options: TraceOptions,
     state: tauri::State<'_, AppState>,
-) -> Result<TraceResult, String> {
+) -> Result<String, String> {
     let pid = std::process::id();
     tracing::info!("[TRACE] run_trace start target='{}' pid={}", target, pid);
 
@@ -201,9 +201,11 @@ async fn run_trace(
     let cancel_notify = Arc::new(Notify::new());
     let cancel_for_task = cancel_notify.clone();
     let cancel_for_exec = cancel_notify.clone();
+    let app_for_task = app.clone();
+    let trace_id_for_task = trace_id.clone();
     
     // Execute the traceroute command in a cancellable task
-    let trace_future = execute_trace_with_cancel(cmd, args, cancel_for_exec);
+    let trace_future = execute_trace_with_cancel(app_for_task, cmd, args, cancel_for_exec, trace_id_for_task);
     let handle = tokio::spawn(async move {
         tokio::select! {
             result = trace_future => result,
@@ -221,43 +223,17 @@ async fn run_trace(
         tracing::debug!("[TRACE] Stored running trace with ID: {}", trace_id);
     }
     
-    // Wait for completion
-    let running_trace = {
-        let mut running_traces = state.running_traces.lock().await;
-        match running_traces.remove(&trace_id) {
-            Some(trace) => trace,
-            None => {
-                let error_msg = "Trace not found in running traces".to_string();
-                tracing::error!("[TRACE] {}", error_msg);
-                return Err(error_msg);
-            }
-        }
-    };
-
-    let result = match running_trace.handle.await {
-        Ok(res) => {
-            match res {
-                Ok(trace_result) => {
-                    tracing::info!("[TRACE] Trace completed successfully for target: {}", target);
-                    trace_result
-                },
-                Err(e) => {
-                    tracing::warn!("[TRACE] Trace failed for target '{}': {}", target, e);
-                    return Err(e);
-                }
-            }
-        },
-        Err(e) => {
-            let error_msg = format!("Trace task join failed (cancelled/panicked): {}", e);
-            tracing::error!("[TRACE] {}", error_msg);
-            return Err(error_msg);
-        }
-    };
-    
-    Ok(result)
+    // Return the trace ID immediately so UI can start listening
+    Ok(trace_id)
 }
 
-async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify: Arc<Notify>) -> Result<TraceResult, String> {
+async fn execute_trace_with_cancel(
+    app: tauri::AppHandle,
+    cmd: String, 
+    args: Vec<String>, 
+    cancel_notify: Arc<Notify>,
+    trace_id: String
+) -> Result<TraceResult, String> {
     let pid = std::process::id();
     tracing::info!("[TRACE] execute_trace_with_cancel start cmd='{}' args='{:?}' pid={}", cmd, args, pid);
     
@@ -300,8 +276,10 @@ async fn execute_trace_with_cancel(cmd: String, args: Vec<String>, cancel_notify
                         stdout_lines_read += 1;
                         if stdout_lines_read <= max_diag_lines {
                             tracing::debug!("[TRACE] stdout line {}: {}", stdout_lines_read, line);
-                            emit_trace_line(&app, &trace_id, n, &line);
                         }
+                        // Emit event for UI update
+                        emit_trace_line(&app, &trace_id, stdout_lines_read, &line);
+                        
                         raw_output.push_str(&line);
                         raw_output.push('\n');
                         

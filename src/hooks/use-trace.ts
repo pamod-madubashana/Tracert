@@ -1,7 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { HopData, TraceResult } from "@/types/trace";
 import { logger } from "@/lib/logger";
+import { useTraceStream, TraceLineEvent } from "./useTraceStream";
 
 // Extend Window interface for Tauri internals
 declare global {
@@ -30,6 +31,10 @@ export const useTrace = () => {
   const [result, setResult] = useState<TraceResult | null>(null);
   const [currentHops, setCurrentHops] = useState<HopData[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [activeTraceId, setActiveTraceId] = useState<string | null>(null);
+  
+  // Use the streaming hook for real-time updates
+  const { lines, reset: resetLines } = useTraceStream(activeTraceId);
 
   // Fallback to simulation if requested or Tauri unavailable
   const useSimulation = USE_SIM || typeof window.__TAURI_INTERNALS__ === 'undefined';
@@ -55,14 +60,15 @@ export const useTrace = () => {
     setCurrentHops([]);
     setResult(null);
     setError(null);
+    resetLines(); // Clear previous lines
 
     try {
       const startTime = new Date();
       
       logger.debug('Invoking run_trace command with:', { target, options });
       
-      // Call Tauri command for real traceroute
-      const traceResult = await invoke<TraceResult>("run_trace", {
+      // Call Tauri command for real traceroute - now returns trace ID
+      const traceId = await invoke<string>("run_trace", {
         target,
         options: {
           maxHops: options.maxHops || 30,
@@ -72,23 +78,15 @@ export const useTrace = () => {
         }
       });
 
-      logger.debug('Received trace result:', traceResult);
-      
-      // Validate the result before using it
-      if (!traceResult || !Array.isArray(traceResult.hops)) {
-        logger.error('Invalid trace result structure:', traceResult);
-        throw new Error("Invalid trace result received from backend");
-      }
+      logger.debug('Received trace ID:', traceId);
+      setActiveTraceId(traceId);
 
-      logger.info(`Trace completed successfully with ${traceResult.hops.length} hops`);
+      // Note: We don't wait for completion anymore since we're streaming
+      // The UI will update in real-time via events
       
-      // Update state with real results
-      setCurrentHops(traceResult.hops);
-      setResult({
-        ...traceResult,
-        startTime,
-        endTime: new Date()
-      });
+      // For backwards compatibility, we could poll for completion or
+      // wait for a completion event, but for now we'll just return
+      return traceId;
 
     } catch (err) {
       // Properly handle Tauri invoke errors
@@ -98,13 +96,10 @@ export const useTrace = () => {
       
       // Reset state on error
       setIsTracing(false);
+      setActiveTraceId(null);
       return Promise.reject(err);
-    } finally {
-      // Ensure we only set isTracing to false once
-      // Note: We don't check 'error' here because it refers to the error state before the catch block
-      setIsTracing(false);
     }
-  }, [useSimulation, startSimTrace]);
+  }, [useSimulation, startSimTrace, resetLines]);
 
   const stopTrace = useCallback(async () => {
     logger.debug(`stopTrace called, isTracing: ${isTracing}, useSimulation: ${useSimulation}`);
@@ -118,10 +113,15 @@ export const useTrace = () => {
       logger.info('Attempting to stop current trace');
       await invoke("stop_trace");
       logger.info('Successfully sent stop command');
+      setIsTracing(false);
+      setActiveTraceId(null);
     } catch (err) {
       logger.error("Failed to stop trace:", err);
     }
   }, [isTracing, useSimulation]);
+
+  // Expose the streaming lines for UI components to consume
+  const streamingLines = lines;
 
   return {
     isTracing: effectiveIsTracing,
@@ -130,7 +130,8 @@ export const useTrace = () => {
     error,
     startTrace,
     stopTrace,
-    isSimulation: useSimulation
+    isSimulation: useSimulation,
+    streamingLines // New: expose the real-time streaming lines
   };
 };
 
