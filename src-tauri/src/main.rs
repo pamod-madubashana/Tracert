@@ -219,7 +219,7 @@ async fn run_trace(
     let cancel_for_exec = cancel_notify.clone();
     let app_for_task = app.clone();
     let trace_id_for_task = trace_id.clone();
-    let state_for_task = state.clone();  // Clone state for the task
+    let state_clone = state.inner().clone();  // Clone the inner state for the task
     
     // Execute the traceroute command in a cancellable task
     let trace_future = execute_trace_with_cancel(app_for_task, cmd, args, cancel_for_exec, trace_id_for_task);
@@ -231,8 +231,8 @@ async fn run_trace(
         
         // Clean up the completed trace from the map after completion
         {
-            let mut running_traces = state_for_task.running_traces.lock().await;
-            running_traces.remove(&trace_id);
+            let mut running_traces = state_clone.running_traces.lock().await;
+            running_traces.remove(&trace_id);  // Use the trace_id that's captured in the async block
         }
         
         result
@@ -417,7 +417,7 @@ async fn execute_trace_with_cancel(
 #[tauri::command]
 async fn stop_trace(trace_id: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut running_traces = state.running_traces.lock().await;
-    if let Some(mut running_trace) = running_traces.remove(&trace_id) {
+    if let Some(running_trace) = running_traces.remove(&trace_id) {
         running_trace.cancel_notify.notify_one();
         
         // Abort the task to ensure it stops immediately
