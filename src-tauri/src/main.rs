@@ -289,6 +289,8 @@ async fn execute_trace_with_cancel(
     let mut stdout_closed = false;
     let mut stderr_closed = false;
     
+    tracing::info!("[Rust] [TRACE] Starting to read stdout and stderr streams");
+    
     while !stdout_closed || !stderr_closed {
         tokio::select! {
             line = out_reader.next_line() => {
@@ -296,7 +298,7 @@ async fn execute_trace_with_cancel(
                     Ok(Some(line)) => {
                         stdout_lines_read += 1;
                         if stdout_lines_read <= max_diag_lines {
-                            tracing::info!("[TRACE] stdout line {}: {}", stdout_lines_read, line);
+                            tracing::info!("[Rust] [TRACE] stdout line {}: {}", stdout_lines_read, line);
                         }
                         // Emit event for UI update
                         emit_trace_line(&app, &trace_id, stdout_lines_read, &line);
@@ -310,12 +312,12 @@ async fn execute_trace_with_cancel(
                         }
                     }
                     Ok(None) => {
-                        tracing::info!("[TRACE] stdout closed after reading {} lines", stdout_lines_read);
+                        tracing::info!("[Rust] [TRACE] stdout closed after reading {} lines", stdout_lines_read);
                         stdout_closed = true;
                     }
                     Err(e) => {
                         let error_msg = format!("stdout read error: {}", e);
-                        tracing::error!("[TRACE] {}", error_msg);
+                        tracing::error!("[Rust] [TRACE] {}", error_msg);
                         return Err(error_msg);
                     }
                 }
@@ -325,7 +327,7 @@ async fn execute_trace_with_cancel(
                     Ok(Some(line)) => {
                         stderr_lines_read += 1;
                         if stderr_lines_read <= max_diag_lines {
-                            tracing::debug!("[TRACE] stderr line {}: {}", stderr_lines_read, line);
+                            tracing::debug!("[Rust] [TRACE] stderr line {}: {}", stderr_lines_read, line);
                         }
                         raw_output.push_str(&line);
                         raw_output.push('\n');
@@ -336,18 +338,18 @@ async fn execute_trace_with_cancel(
                         }
                     }
                     Ok(None) => {
-                        tracing::info!("[TRACE] stderr closed after reading {} lines", stderr_lines_read);
+                        tracing::info!("[Rust] [TRACE] stderr closed after reading {} lines", stderr_lines_read);
                         stderr_closed = true;
                     }
                     Err(e) => {
                         let error_msg = format!("stderr read error: {}", e);
-                        tracing::error!("[TRACE] {}", error_msg);
+                        tracing::error!("[Rust] [TRACE] {}", error_msg);
                         return Err(error_msg);
                     }
                 }
             }
             _ = cancel_notify.notified() => {
-                tracing::info!("[TRACE] Cancel notification received, killing process pid={}", child_pid);
+                tracing::info!("[Rust] [TRACE] Cancel notification received, killing process pid={}", child_pid);
                 let _ = child.kill().await;
                 tracing::debug!("raw_output bytes: {}", raw_output.len());
                 tracing::debug!("raw_output preview: {}", raw_output.lines().take(5).collect::<Vec<_>>().join(" | "));
@@ -356,27 +358,39 @@ async fn execute_trace_with_cancel(
         }
     }
     
-    tracing::info!("[TRACE] Both stdout and stderr closed, about to wait for child process pid={}", child_pid);
+    tracing::info!("[Rust] [TRACE] Both stdout and stderr closed, about to wait for child process pid={}", child_pid);
+    tracing::info!("[Rust] [TRACE] Hops collected so far: {}, Raw output length: {}", hops.len(), raw_output.len());
     
-    // Wait for the process to finish
-    let exit_status = child.wait().await
+    // Wait for the process to finish with a timeout to prevent hanging
+    let exit_status = tokio::time::timeout(
+        tokio::time::Duration::from_secs(60), // 60 second timeout
+        child.wait()
+    ).await
+        .map_err(|_| {
+            let error_msg = format!("Process timed out after 60 seconds, killing process pid={}", child_pid);
+            tracing::error!("[Rust] [TRACE] {}", error_msg);
+            
+            // Attempt to kill the process
+            let _ = child.kill().await;
+            error_msg
+        })?
         .map_err(|e| {
             let error_msg = format!("Failed to wait for process: {}", e);
-            tracing::error!("[TRACE] {}", error_msg);
+            tracing::error!("[Rust] [TRACE] {}", error_msg);
             error_msg
         })?;
     
-    tracing::info!("[TRACE] Child process finished with exit code: {}", exit_status.code().unwrap_or(-1));
+    tracing::info!("[Rust] [TRACE] Child process finished with exit code: {}", exit_status.code().unwrap_or(-1));
     
     if !exit_status.success() {
         let error_msg = format!("{} failed with status code {}: process exited", cmd, exit_status.code().unwrap_or(-1));
-        tracing::warn!("[TRACE] {}", error_msg);
+        tracing::warn!("[Rust] [TRACE] {}", error_msg);
         // Return as warning rather than error to allow partial results
     }
     
     let end_time = Some(chrono::Utc::now().to_rfc3339());
     
-    tracing::info!("[TRACE] Trace completed - raw_output len: {}, hops count: {}", raw_output.len(), hops.len());
+    tracing::info!("[Rust] [TRACE] Trace completed - raw_output len: {}, hops count: {}", raw_output.len(), hops.len());
     
     let result = TraceResult {
         target: args.last().unwrap_or(&"unknown".to_string()).clone(),
@@ -387,10 +401,10 @@ async fn execute_trace_with_cancel(
         end_time,
     };
     
-    tracing::info!("[TRACE] About to emit completion event for trace_id: {}", trace_id);
+    tracing::info!("[Rust] [TRACE] About to emit completion event for trace_id: {}", trace_id);
     // Emit completion event to notify frontend
     emit_trace_complete(&app, &trace_id, &result);
-    tracing::info!("[TRACE] Completion event emitted for trace_id: {}", trace_id);
+    tracing::info!("[Rust] [TRACE] Completion event emitted for trace_id: {}", trace_id);
     
     Ok(result)
 }
