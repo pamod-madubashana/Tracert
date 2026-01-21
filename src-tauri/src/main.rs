@@ -701,7 +701,7 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
         
         let mut latencies = Vec::new();
         let mut ip_part = None;
-        let host_part = None;
+        let mut host_part = None;
         
         let mut i = 1; // Start after hop number
         
