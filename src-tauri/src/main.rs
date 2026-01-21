@@ -655,6 +655,7 @@ fn prepare_trace_command(target: &str, options: &TraceOptions) -> Result<(String
 fn parse_traceroute_line(line: &str) -> Option<HopData> {
     // Windows tracert format: " 1    <time> ms    <time> ms    <time> ms     <ip>"
     // Or: " 1    *        *        *     Request timed out."
+    // Or: "10    81 ms    68 ms    62 ms  dns.google [8.8.8.8]" (domain [ip] format)
     // Unix traceroute format: " 1  <ip> (<ip>)  <time> ms  <time> ms  <time> ms"
     
     // Trim leading whitespace
@@ -696,6 +697,7 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
         // Windows format: "1    <1 ms    <1 ms    <1 ms    192.168.1.1"
         // Or: "1    1 ms    1 ms    1 ms    192.168.1.1"
         // Or: "1    *        *        *     Request timed out."
+        // Or: "10    81 ms    68 ms    62 ms  dns.google [8.8.8.8]" (special domain [ip] format)
         
         let mut latencies = Vec::new();
         let mut ip_part = None;
@@ -730,8 +732,22 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
         // Look for the IP address at the end of the line
         for j in i..parts.len() {
             let part = parts[j];
+            
+            // Check for the special "domain [ip]" format (e.g., "dns.google [8.8.8.8]")
+            if part.starts_with('[') && part.ends_with(']') {
+                // Extract IP from [ip] format
+                let inner = &part[1..part.len()-1]; // Remove [ and ]
+                if is_valid_ipv4_format(inner) {
+                    ip_part = Some(inner.to_string());
+                    // If previous part looks like a hostname, capture it
+                    if j > 0 && !parts[j-1].ends_with("ms") && parts[j-1] != "*" {
+                        host_part = Some(parts[j-1].to_string());
+                    }
+                    break;
+                }
+            }
             // If it looks like an IP (contains dots and valid format)
-            if part.contains('.') && is_valid_ipv4_format(part) {
+            else if part.contains('.') && is_valid_ipv4_format(part) {
                 ip_part = Some(part.to_string());
                 break;
             }
