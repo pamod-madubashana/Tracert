@@ -14,6 +14,34 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tracing_subscriber::Layer;
 use tauri::{AppHandle, Emitter};
+use once_cell::sync::Lazy;
+use maxminddb::Reader;
+use reqwest;
+use tokio::fs;
+
+// Static reference to the geolocation database
+static GEO_DB: Lazy<Option<Reader<Vec<u8>>>> = Lazy::new(|| {
+    // Look for the geolocation database file in resources or app data
+    let possible_paths = [
+        "resources/GeoLite2-City.mmdb",
+        "GeoLite2-City.mmdb",
+        &format!("{}/Local/tracert/GeoLite2-City.mmdb", dirs::data_dir()
+            .unwrap_or(std::env::current_dir().unwrap())
+            .to_str().unwrap()),
+    ];
+    
+    for path in &possible_paths {
+        if std::path::Path::new(path).exists() {
+            match Reader::open_readfile(std::path::Path::new(path)) {
+                Ok(reader) => return Some(reader),
+                Err(e) => {
+                    eprintln!("Failed to load geodb from {}: {}", path, e);
+                }
+            }
+        }
+    }
+    None
+});
 
 #[derive(Serialize, Clone)]
 struct TraceLineEvent {
@@ -135,13 +163,80 @@ fn log_error(message: String) {
     tracing::error!("[React] {}", message);
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GeoLocation {
-    pub lat: f64,
-    pub lng: f64,
-    pub city: Option<String>,
-    pub country: Option<String>,
-    pub country_code: Option<String>,
+#[derive(Serialize)]
+struct GeoResult {
+    ip: String,
+    lat: Option<f64>,
+    lng: Option<f64>,
+    city: Option<String>,
+    country: Option<String>,
+    country_code: Option<String>,
+}
+
+#[tauri::command]
+async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
+    // Check if it's a private IP - don't look up geolocation for private IPs
+    if ip.starts_with("10.") || 
+       ip.starts_with("192.168.") || 
+       (ip.starts_with("172.") && {
+           let parts: Vec<&str> = ip.split('.').collect();
+           if parts.len() > 1 {
+               let second_octet = parts[1].parse::<u8>().unwrap_or(0);
+               (16..=31).contains(&second_octet)
+           } else {
+               false
+           }
+       }) {
+        return Ok(GeoResult {
+            ip,
+            lat: None,
+            lng: None,
+            city: Some("Private/Internal".to_string()),
+            country: None,
+            country_code: None,
+        });
+    }
+
+    let db = GEO_DB.as_ref().ok_or_else(|| "Geolocation database not loaded".to_string())?;
+    let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
+
+    match db.lookup::<maxminddb::geoip2::City>(addr) {
+        Ok(city) => {
+            let lat = city.location.as_ref().and_then(|l| l.latitude);
+            let lng = city.location.as_ref().and_then(|l| l.longitude);
+
+            let city_name = city.city
+                .as_ref()
+                .and_then(|c| c.names.as_ref())
+                .and_then(|n| n.get("en"))
+                .cloned();
+
+            let country_name = city.country
+                .as_ref()
+                .and_then(|c| c.names.as_ref())
+                .and_then(|n| n.get("en"))
+                .cloned();
+
+            let country_code = city.country.as_ref().and_then(|c| c.iso_code.clone());
+
+            Ok(GeoResult {
+                ip,
+                lat,
+                lng,
+                city: city_name,
+                country: country_name,
+                country_code,
+            })
+        }
+        Err(_) => Ok(GeoResult {
+            ip,
+            lat: None,
+            lng: None,
+            city: Some("Unknown".to_string()),
+            country: Some("Unknown".to_string()),
+            country_code: None,
+        }),
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -411,10 +506,13 @@ async fn execute_trace_with_cancel(
     
     tracing::info!("[Rust] [TRACE] Trace completed - raw_output len: {}, hops count: {}", raw_output.len(), hops.len());
     
+    // Enrich hops with geolocation data
+    let enriched_hops = enrich_hops_with_geolocation(hops).await;
+
     let result = TraceResult {
         target: args.last().unwrap_or(&"unknown".to_string()).clone(),
         resolved_ip: None,
-        hops,
+        hops: enriched_hops,
         raw_output,
         start_time,
         end_time,
@@ -848,6 +946,8 @@ fn main() {
             log_info,
             log_warn,
             log_error,
+            geo_lookup,
+            download_geolite_db,
         ])
         .setup(|_app| {
             tracing::info!("[Rust] [LIFECYCLE] App setup completed, PID={}", std::process::id());
@@ -869,4 +969,169 @@ fn main() {
         });
         
     tracing::info!("[Rust] [LIFECYCLE] App shutting down, PID={}", pid);
+}
+
+// Function to enrich hop data with geolocation information
+async fn enrich_hops_with_geolocation(mut hops: Vec<HopData>) -> Vec<HopData> {
+    for hop in &mut hops {
+        if let Some(ref ip) = hop.ip {
+            // Only look up geolocation for public IPs, not private ones
+            if !is_private_ip(ip) {
+                if let Ok(geo_result) = geo_lookup_inner(ip.clone()).await {
+                    if geo_result.lat.is_some() && geo_result.lng.is_some() {
+                        hop.geo = Some(GeoLocation {
+                            lat: geo_result.lat.unwrap(),
+                            lng: geo_result.lng.unwrap(),
+                            city: geo_result.city,
+                            country: geo_result.country,
+                            country_code: geo_result.country_code,
+                        });
+                    } else if geo_result.city.is_some() && geo_result.city.as_ref().unwrap() != "Unknown" {
+                        // Even if lat/lng are unavailable, we can still show location info
+                        hop.geo = Some(GeoLocation {
+                            lat: 0.0,
+                            lng: 0.0,
+                            city: geo_result.city,
+                            country: geo_result.country,
+                            country_code: geo_result.country_code,
+                        });
+                    }
+                }
+            } else {
+                // For private IPs, set appropriate location info
+                hop.geo = Some(GeoLocation {
+                    lat: 0.0,
+                    lng: 0.0,
+                    city: Some("Private/Internal".to_string()),
+                    country: Some("Private".to_string()),
+                    country_code: Some("PR".to_string()),
+                });
+            }
+        }
+    }
+    hops
+}
+
+// Helper function to check if an IP is private
+fn is_private_ip(ip_str: &str) -> bool {
+    ip_str.starts_with("10.") || 
+    ip_str.starts_with("192.168.") || 
+    (ip_str.starts_with("172.") && {
+        let parts: Vec<&str> = ip_str.split('.').collect();
+        if parts.len() > 1 {
+            if let Ok(second_octet) = parts[1].parse::<u8>() {
+                (16..=31).contains(&second_octet)
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    })
+}
+
+// Internal function to perform geolocation lookup
+async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
+    // Check if it's a private IP - don't look up geolocation for private IPs
+    if ip.starts_with("10.") || 
+       ip.starts_with("192.168.") || 
+       (ip.starts_with("172.") && {
+           let parts: Vec<&str> = ip.split('.').collect();
+           if parts.len() > 1 {
+               let second_octet = parts[1].parse::<u8>().unwrap_or(0);
+               (16..=31).contains(&second_octet)
+           } else {
+               false
+           }
+       }) {
+        return Ok(GeoResult {
+            ip,
+            lat: None,
+            lng: None,
+            city: Some("Private/Internal".to_string()),
+            country: None,
+            country_code: None,
+        });
+    }
+
+    let db = GEO_DB.as_ref().ok_or_else(|| "Geolocation database not loaded".to_string())?;
+    let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
+
+    match db.lookup::<maxminddb::geoip2::City>(addr) {
+        Ok(city) => {
+            let lat = city.location.as_ref().and_then(|l| l.latitude);
+            let lng = city.location.as_ref().and_then(|l| l.longitude);
+
+            let city_name = city.city
+                .as_ref()
+                .and_then(|c| c.names.as_ref())
+                .and_then(|n| n.get("en"))
+                .cloned();
+
+            let country_name = city.country
+                .as_ref()
+                .and_then(|c| c.names.as_ref())
+                .and_then(|n| n.get("en"))
+                .cloned();
+
+            let country_code = city.country.as_ref().and_then(|c| c.iso_code.clone());
+
+            Ok(GeoResult {
+                ip,
+                lat,
+                lng,
+                city: city_name,
+                country: country_name,
+                country_code,
+            })
+        }
+        Err(_) => Ok(GeoResult {
+            ip,
+            lat: None,
+            lng: None,
+            city: Some("Unknown".to_string()),
+            country: Some("Unknown".to_string()),
+            country_code: None,
+        }),
+    }
+}
+
+#[tauri::command]
+async fn download_geolite_db() -> Result<String, String> {
+    let app_data_dir = dirs::data_dir()
+        .unwrap_or(std::env::current_dir().unwrap())
+        .join("Local")
+        .join("tracert");
+    
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&app_data_dir).await
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    
+    let db_path = app_data_dir.join("GeoLite2-City.mmdb");
+    
+    // Check if file already exists
+    if db_path.exists() {
+        return Ok("Database already exists".to_string());
+    }
+    
+    let url = "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb";
+    
+    // Download the file
+    let response = reqwest::get(url)
+        .await
+        .map_err(|e| format!("Failed to download database: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status: {}", response.status()));
+    }
+    
+    let content = response.bytes()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    // Write to file
+    fs::write(&db_path, content).await
+        .map_err(|e| format!("Failed to save database: {}", e))?;
+    
+    Ok(format!("Database downloaded to: {}", db_path.display()))
 }

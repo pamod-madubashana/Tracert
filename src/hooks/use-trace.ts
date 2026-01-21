@@ -221,7 +221,8 @@ function parseTracerouteLine(line: string): HopData | undefined {
         ip: undefined,
         latencies: [undefined, undefined, undefined],
         avgLatency: undefined,
-        status: "timeout"
+        status: "timeout",
+        geo: undefined // Will be populated by the backend with real geolocation data
       };
     }
     return undefined;
@@ -295,7 +296,8 @@ function parseTracerouteLine(line: string): HopData | undefined {
     ip: ipPart,
     latencies: latencies as (number | undefined)[],
     avgLatency,
-    status: validLatencies.length > 0 ? "success" : "timeout"
+    status: validLatencies.length > 0 ? "success" : "timeout",
+    geo: undefined // Will be populated by the backend with real geolocation data
   };
 }
 
