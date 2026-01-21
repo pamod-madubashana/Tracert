@@ -2,23 +2,106 @@
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Arc;
-use tokio::process::Command;
-use tokio::sync::Mutex;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use std::process::Stdio;
-use sysinfo::{System, SystemExt, ProcessExt, PidExt};
-use std::env;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tracing_subscriber::Layer;
-use tauri::{AppHandle, Emitter};
-use once_cell::sync::Lazy;
-use maxminddb::Reader;
-use reqwest;
-use tokio::fs;
-use directories::BaseDirs;
+
+// Define the structure for the City database
+#[derive(Deserialize)]
+struct CityResponse {
+    #[serde(rename = "location")]
+    location: Option<Location>,
+    #[serde(rename = "city")]
+    city: Option<City>,
+    #[serde(rename = "country")]
+    country: Option<Country>,
+}
+
+#[derive(Deserialize)]
+struct Location {
+    #[serde(rename = "latitude")]
+    latitude: Option<f64>,
+    #[serde(rename = "longitude")]
+    longitude: Option<f64>,
+}
+
+#[derive(Deserialize)]
+struct City {
+    #[serde(rename = "names")]
+    names: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Deserialize)]
+struct Country {
+    #[serde(rename = "iso_code")]
+    iso_code: Option<String>,
+    #[serde(rename = "names")]
+    names: Option<std::collections::HashMap<String, String>>,
+}
+
+#[tauri::command]
+async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
+    // Check if it's a private IP - don't look up geolocation for private IPs
+    if ip.starts_with("10.") || 
+       ip.starts_with("192.168.") || 
+       (ip.starts_with("172.") && {
+           let parts: Vec<&str> = ip.split('.').collect();
+           if parts.len() > 1 {
+               let second_octet = parts[1].parse::<u8>().unwrap_or(0);
+               (16..=31).contains(&second_octet)
+           } else {
+               false
+           }
+       }) {
+        return Ok(GeoResult {
+            ip,
+            lat: None,
+            lng: None,
+            city: Some("Private/Internal".to_string()),
+            country: None,
+            country_code: None,
+        });
+    }
+
+    let db = GEO_DB.as_ref().ok_or_else(|| "Geolocation database not loaded".to_string())?;
+    let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
+
+    match db.lookup::<CityResponse>(addr) {
+        Ok(city_response) => {
+            let lat = city_response.location.as_ref().and_then(|l| l.latitude);
+            let lng = city_response.location.as_ref().and_then(|l| l.longitude);
+
+            let city_name = city_response.city
+                .as_ref()
+                .and_then(|c| c.names.as_ref())
+                .and_then(|n| n.get("en").cloned());
+
+            let country_name = city_response.country
+                .as_ref()
+                .and_then(|c| c.names.as_ref())
+                .and_then(|n| n.get("en").cloned());
+
+            let country_code = city_response.country
+                .as_ref()
+                .and_then(|c| c.iso_code.as_ref())
+                .cloned();
+
+            Ok(GeoResult {
+                ip,
+                lat,
+                lng,
+                city: city_name,
+                country: country_name,
+                country_code,
+            })
+        }
+        Err(_) => Ok(GeoResult {
+            ip,
+            lat: None,
+            lng: None,
+            city: Some("Unknown".to_string()),
+            country: Some("Unknown".to_string()),
+            country_code: None,
+        }),
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GeoLocation {
@@ -181,75 +264,6 @@ struct GeoResult {
     city: Option<String>,
     country: Option<String>,
     country_code: Option<String>,
-}
-
-#[tauri::command]
-async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
-    // Check if it's a private IP - don't look up geolocation for private IPs
-    if ip.starts_with("10.") || 
-       ip.starts_with("192.168.") || 
-       (ip.starts_with("172.") && {
-           let parts: Vec<&str> = ip.split('.').collect();
-           if parts.len() > 1 {
-               let second_octet = parts[1].parse::<u8>().unwrap_or(0);
-               (16..=31).contains(&second_octet)
-           } else {
-               false
-           }
-       }) {
-        return Ok(GeoResult {
-            ip,
-            lat: None,
-            lng: None,
-            city: Some("Private/Internal".to_string()),
-            country: None,
-            country_code: None,
-        });
-    }
-
-    let db = GEO_DB.as_ref().ok_or_else(|| "Geolocation database not loaded".to_string())?;
-    let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
-
-    match db.lookup(addr) {
-        Ok(city) => {
-            let lat = city.location.as_ref().and_then(|l| l.latitude);
-            let lng = city.location.as_ref().and_then(|l| l.longitude);
-
-            let city_name = city.city
-                .as_ref()
-                .and_then(|c| c.names.as_ref())
-                .and_then(|n| n.get("en"))
-                .map(|s| s.to_string());
-
-            let country_name = city.country
-                .as_ref()
-                .and_then(|c| c.names.as_ref())
-                .and_then(|n| n.get("en"))
-                .map(|s| s.to_string());
-
-            let country_code = city.country
-                .as_ref()
-                .and_then(|c| c.iso_code.as_ref())
-                .map(|s| s.to_string());
-
-            Ok(GeoResult {
-                ip,
-                lat,
-                lng,
-                city: city_name,
-                country: country_name,
-                country_code,
-            })
-        }
-        Err(_) => Ok(GeoResult {
-            ip,
-            lat: None,
-            lng: None,
-            city: Some("Unknown".to_string()),
-            country: Some("Unknown".to_string()),
-            country_code: None,
-        }),
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1114,27 +1128,25 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
         "Invalid IP address".to_string()
     })?;
 
-    match db.lookup(addr) {
-        Ok(city) => {
-            let lat = city.location.as_ref().and_then(|l| l.latitude);
-            let lng = city.location.as_ref().and_then(|l| l.longitude);
+    match db.lookup::<CityResponse>(addr) {
+        Ok(city_response) => {
+            let lat = city_response.location.as_ref().and_then(|l| l.latitude);
+            let lng = city_response.location.as_ref().and_then(|l| l.longitude);
 
-            let city_name = city.city
+            let city_name = city_response.city
                 .as_ref()
                 .and_then(|c| c.names.as_ref())
-                .and_then(|n| n.get("en"))
-                .map(|s| s.to_string());
+                .and_then(|n| n.get("en").cloned());
 
-            let country_name = city.country
+            let country_name = city_response.country
                 .as_ref()
                 .and_then(|c| c.names.as_ref())
-                .and_then(|n| n.get("en"))
-                .map(|s| s.to_string());
+                .and_then(|n| n.get("en").cloned());
 
-            let country_code = city.country
+            let country_code = city_response.country
                 .as_ref()
                 .and_then(|c| c.iso_code.as_ref())
-                .map(|s| s.to_string());
+                .cloned();
 
             tracing::debug!("[Rust] [GEO] Successful lookup for {}: lat={:?}, lng={:?}, city={:?}, country={:?}",
                            ip, lat, lng, city_name, country_name);
