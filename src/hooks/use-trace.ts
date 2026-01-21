@@ -47,7 +47,7 @@ export const useTrace = () => {
   
   // Process streaming lines to update hops in real-time when not using simulation
   useEffect(() => {
-    console.log('[React] [use-trace] Processing streaming lines, isTracing:', isTracing, 'lines count:', lines.length);
+    console.log(' [use-trace] Processing streaming lines, isTracing:', isTracing, 'lines count:', lines.length);
     if (useSimulation || !lines || lines.length === 0 || !isTracing) return;
     
     // Parse the streaming lines to update hops in real-time
@@ -77,19 +77,19 @@ export const useTrace = () => {
   
   // Log when isTracing changes
   useEffect(() => {
-    console.log('[React] [use-trace] isTracing state changed to:', isTracing);
+    console.log(' [use-trace] isTracing state changed to:', isTracing);
   }, [isTracing]);
   
   // Handle completion event from backend
   useEffect(() => {
-    console.log('[React] [use-trace] Completion effect triggered, completion:', completion);
+    console.log(' [use-trace] Completion effect triggered, completion:', completion);
     if (completion && !useSimulation) {
       logger.info('Received trace completion event, updating state');
-      console.log('[React] [use-trace] Processing completion event for trace_id=', completion.trace_id);
+      console.log(' [use-trace] Processing completion event for trace_id=', completion.trace_id);
       setResult(completion.result);
       // Update currentHops with the final result when trace completes
       setCurrentHops(completion.result.hops);
-      console.log('[React] [use-trace] Setting isTracing to false');
+      console.log(' [use-trace] Setting isTracing to false');
       setIsTracing(false);
       setActiveTraceId(null);
       resetLines();
@@ -128,7 +128,7 @@ export const useTrace = () => {
         }
       });
 
-      console.log('[React] [use-trace] Raw trace ID received from Rust:', traceId, 'Type:', typeof traceId);
+      console.log('[use-trace] Raw trace ID received from Rust:', traceId, 'Type:', typeof traceId);
       logger.debug('Received trace ID:', traceId);
       
       // Validate that we got a proper trace ID
