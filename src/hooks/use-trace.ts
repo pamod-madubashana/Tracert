@@ -76,10 +76,10 @@ export const useTrace = () => {
   
   // Handle completion event from backend
   useEffect(() => {
-    console.log('[use-trace] Completion effect triggered, completion:', completion);
+    console.log('[React] [use-trace] Completion effect triggered, completion:', completion);
     if (completion && !useSimulation) {
       logger.info('Received trace completion event, updating state');
-      console.log('[use-trace] Processing completion event for trace:', completion.trace_id);
+      console.log('[React] [use-trace] Processing completion event for trace:', completion.trace_id);
       setResult(completion.result);
       // Update currentHops with the final result when trace completes
       setCurrentHops(completion.result.hops);

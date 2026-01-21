@@ -55,17 +55,17 @@ export function useTraceStream(activeTraceId: string | null) {
         
         // Listen for trace completion events
         unlistenComplete = await listen<TraceCompleteEvent>("trace:complete", (event) => {
-          console.log('[useTraceStream] Received trace:complete event:', event);
+          console.log('[React] [useTraceStream] Received trace:complete event:', event);
           // For completion events, check both current and last expected trace ID
           // This handles potential race conditions where activeTraceId gets reset before
           // the completion event is processed
           if (!activeIdRef.current && !lastExpectedTraceIdRef.current) {
-            console.log('[useTraceStream] Rejecting completion event - no active trace ID');
+            console.log('[React] [useTraceStream] Rejecting completion event - no active trace ID');
             return;
           }
           if (event.payload.trace_id !== activeIdRef.current && 
               event.payload.trace_id !== lastExpectedTraceIdRef.current) {
-            console.log('[useTraceStream] Rejecting completion event - trace ID mismatch', {
+            console.log('[React] [useTraceStream] Rejecting completion event - trace ID mismatch', {
               eventTraceId: event.payload.trace_id,
               activeId: activeIdRef.current,
               lastExpectedId: lastExpectedTraceIdRef.current
@@ -73,7 +73,7 @@ export function useTraceStream(activeTraceId: string | null) {
             return;
           }
 
-          console.log('[useTraceStream] Accepting completion event for trace:', event.payload.trace_id);
+          console.log('[React] [useTraceStream] Accepting completion event for trace:', event.payload.trace_id);
           setCompletion(event.payload);
         });
         
