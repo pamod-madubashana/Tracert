@@ -437,10 +437,23 @@ async fn execute_trace_with_cancel(
                         raw_output.push('\n');
                         
                         // Try to parse the line for hop data
-                        if let Some(hop_data) = parse_traceroute_line(&line) {
+                        if let Some(mut hop_data) = parse_traceroute_line(&line) {
                             tracing::debug!("[Rust] [TRACE] Parsed hop data: hop={}, ip={:?}, latencies={:?}", 
                                           hop_data.hop, hop_data.ip, hop_data.latencies);
-                            hops.push(hop_data);
+                            
+                            // Enrich this single hop with geolocation data immediately
+                            if let Some(ref ip) = hop_data.ip {
+                                if let Ok(geo_data) = geo_lookup_inner(ip).await {
+                                    hop_data.geo = Some(geo_data);
+                                }
+                            }
+                            
+                            hops.push(hop_data.clone()); // Store the enriched hop
+                            
+                            // Emit the enriched hop immediately
+                            if let Err(e) = emit_hop_update(app.clone(), &trace_id, hop_data).await {
+                                tracing::warn!("[Rust] [TRACE] Failed to emit hop update: {}", e);
+                            }
                         } else {
                             tracing::debug!("[Rust] [TRACE] Line did not parse as hop: {}", line);
                         }
@@ -467,10 +480,23 @@ async fn execute_trace_with_cancel(
                         raw_output.push('\n');
                         
                         // On Windows, tracert writes to stderr, so we should also try to parse stderr lines
-                        if let Some(hop_data) = parse_traceroute_line(&line) {
+                        if let Some(mut hop_data) = parse_traceroute_line(&line) {
                             tracing::debug!("[Rust] [TRACE] Parsed hop data from stderr: hop={}, ip={:?}, latencies={:?}", 
                                           hop_data.hop, hop_data.ip, hop_data.latencies);
-                            hops.push(hop_data);
+                            
+                            // Enrich this single hop with geolocation data immediately
+                            if let Some(ref ip) = hop_data.ip {
+                                if let Ok(geo_data) = geo_lookup_inner(ip).await {
+                                    hop_data.geo = Some(geo_data);
+                                }
+                            }
+                            
+                            hops.push(hop_data.clone()); // Store the enriched hop
+                            
+                            // Emit the enriched hop immediately
+                            if let Err(e) = emit_hop_update(app.clone(), &trace_id, hop_data).await {
+                                tracing::warn!("[Rust] [TRACE] Failed to emit hop update: {}", e);
+                            }
                         } else {
                             tracing::debug!("[Rust] [TRACE] stderr line did not parse as hop: {}", line);
                         }
@@ -526,14 +552,11 @@ async fn execute_trace_with_cancel(
     let end_time = Some(chrono::Utc::now().to_rfc3339());
     
     tracing::info!("[Rust] [TRACE] Trace completed - raw_output len: {}, hops count: {}", raw_output.len(), hops.len());
-    
-    // Enrich hops with geolocation data
-    let enriched_hops = enrich_hops_with_geolocation(hops).await;
 
     let result = TraceResult {
         target: args.last().unwrap_or(&"unknown".to_string()).clone(),
         resolved_ip: None,
-        hops: enriched_hops,
+        hops,
         raw_output,
         start_time,
         end_time,
@@ -1006,62 +1029,11 @@ fn main() {
 }
 
 // Function to enrich hop data with geolocation information
-async fn enrich_hops_with_geolocation(mut hops: Vec<HopData>) -> Vec<HopData> {
-    tracing::debug!("[Rust] [GEO] Starting geolocation enrichment for {} hops", hops.len());
-    
-    for hop in &mut hops {
-        if let Some(ref ip) = hop.ip {
-            tracing::debug!("[Rust] [GEO] Processing hop {} with IP: {}", hop.hop, ip);
-            
-            // Only look up geolocation for public IPs, not private ones
-            if !is_private_ip(ip) {
-                tracing::debug!("[Rust] [GEO] IP {} is public, attempting geolocation lookup", ip);
-                if let Ok(geo_result) = geo_lookup_inner(ip.clone()).await {
-                    tracing::debug!("[Rust] [GEO] Geolocation lookup result for {}: lat={:?}, lng={:?}, city={:?}", 
-                                   ip, geo_result.lat, geo_result.lng, geo_result.city);
-                    
-                    if geo_result.lat.is_some() && geo_result.lng.is_some() {
-                        hop.geo = Some(GeoLocation {
-                            lat: geo_result.lat.unwrap(),
-                            lng: geo_result.lng.unwrap(),
-                            city: geo_result.city,
-                            country: geo_result.country,
-                            country_code: geo_result.country_code,
-                        });
-                        tracing::debug!("[Rust] [GEO] Successfully enriched hop {} with geolocation data", hop.hop);
-                    } else if geo_result.city.is_some() && geo_result.city.as_ref().unwrap() != "Unknown" {
-                        // Even if lat/lng are unavailable, we can still show location info
-                        hop.geo = Some(GeoLocation {
-                            lat: 0.0,
-                            lng: 0.0,
-                            city: geo_result.city,
-                            country: geo_result.country,
-                            country_code: geo_result.country_code,
-                        });
-                        tracing::debug!("[Rust] [GEO] Enriched hop {} with partial geolocation data (city only)", hop.hop);
-                    } else {
-                        tracing::debug!("[Rust] [GEO] No usable geolocation data found for hop {}", hop.hop);
-                    }
-                } else {
-                    tracing::debug!("[Rust] [GEO] Geolocation lookup failed for hop {}", hop.hop);
-                }
-            } else {
-                tracing::debug!("[Rust] [GEO] IP {} is private, setting Private/Internal location", ip);
-                // For private IPs, set appropriate location info
-                hop.geo = Some(GeoLocation {
-                    lat: 0.0,
-                    lng: 0.0,
-                    city: Some("Private/Internal".to_string()),
-                    country: Some("Private".to_string()),
-                    country_code: Some("PR".to_string()),
-                });
-            }
-        } else {
-            tracing::debug!("[Rust] [GEO] Hop {} has no IP address, skipping geolocation", hop.hop);
-        }
-    }
-    
-    tracing::debug!("[Rust] [GEO] Completed geolocation enrichment for {} hops", hops.len());
+async fn enrich_hops_with_geolocation(hops: Vec<HopData>) -> Vec<HopData> {
+    // Since geolocation is now handled in real-time as each hop is parsed,
+    // this function is no longer needed for geolocation enrichment.
+    // It's kept for backward compatibility but returns hops as-is.
+    tracing::debug!("[Rust] [GEO] Skipping bulk geolocation enrichment - handled in real-time per hop");
     hops
 }
 
@@ -1213,4 +1185,25 @@ async fn download_geolite_db() -> Result<String, String> {
         .map_err(|e| format!("Failed to save database: {}", e))?;
     
     Ok(format!("Database downloaded to: {}", db_path.display()))
+}
+
+// Add a new event for individual hop updates
+#[tauri::command]
+async fn emit_hop_update(
+    app: tauri::AppHandle,
+    trace_id: &str,
+    hop_data: HopData
+) -> Result<(), String> {
+    tracing::debug!("[Rust] [TRACE] emit_hop_update called with trace_id: {}, hop: {}", trace_id, hop_data.hop);
+    
+    let event_payload = serde_json::json!({
+        "trace_id": trace_id,
+        "hop_data": hop_data
+    });
+    
+    let result = app.emit("hop:update", &event_payload)
+        .map_err(|e| format!("Failed to emit hop:update event: {}", e));
+    
+    tracing::debug!("[Rust] [TRACE] emit 'hop:update' event -> {:?}", result);
+    result
 }

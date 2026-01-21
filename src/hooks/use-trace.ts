@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { HopData, TraceResult } from "@/types/trace";
 import { logger } from "@/lib/logger";
 import { useTraceStream, TraceLineEvent } from "./useTraceStream";
@@ -80,6 +81,57 @@ export const useTrace = () => {
     logger.info(`[use-trace] isTracing state changed to: ${isTracing}`);
   }, [isTracing]);
   
+  // Handle hop updates for real-time location updates
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__) return;
+    
+    console.info('[React] Installing hop:update listener...');
+    
+    let unlisten: (() => void) | null = null;
+    
+    listen('hop:update', (event: { payload: { trace_id: string, hop_data: HopData } }) => {
+      console.info('[React] hop:update received:', event.payload);
+      
+      // Only process if this hop update is for the current trace
+      if (event.payload.trace_id === activeTraceId) {
+        console.info('[React] Processing hop update for current trace');
+        
+        // Update currentHops with the new hop data
+        setCurrentHops(prevHops => {
+          const updatedHops = [...prevHops];
+          const hopIndex = updatedHops.findIndex(h => h.hop === event.payload.hop_data.hop);
+          
+          if (hopIndex >= 0) {
+            // Update existing hop
+            updatedHops[hopIndex] = event.payload.hop_data;
+          } else {
+            // Add new hop
+            updatedHops.push(event.payload.hop_data);
+          }
+          
+          // Sort hops by hop number to maintain order
+          updatedHops.sort((a, b) => a.hop - b.hop);
+          
+          return updatedHops;
+        });
+      } else {
+        console.info('[React] Ignoring hop update for different trace:', event.payload.trace_id);
+      }
+    }).then(unlistenFn => {
+      console.info('[React] hop:update listener installed');
+      unlisten = unlistenFn;
+    }).catch(err => {
+      console.error('[React] Error installing hop:update listener:', err);
+    });
+
+    return () => {
+      if (unlisten) {
+        console.info('[React] Uninstalling hop:update listener...');
+        unlisten();
+      }
+    };
+  }, [activeTraceId]);
+
   // Handle completion event from backend
   useEffect(() => {
     logger.info(`[use-trace] Completion effect triggered, completion: ${JSON.stringify(completion)}`);
