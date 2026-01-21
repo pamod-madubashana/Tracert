@@ -17,10 +17,16 @@ export function useTraceStream(activeTraceId: string | null) {
   const [lines, setLines] = useState<TraceLineEvent[]>([]);
   const [completion, setCompletion] = useState<TraceCompleteEvent | null>(null);
   const activeIdRef = useRef<string | null>(null);
+  const lastExpectedTraceIdRef = useRef<string | null>(null); // Track the last expected trace ID
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
   useEffect(() => {
-    activeIdRef.current = activeTraceId;
+    if (activeTraceId) {
+      activeIdRef.current = activeTraceId;
+      lastExpectedTraceIdRef.current = activeTraceId; // Keep track for completion events
+    } else {
+      activeIdRef.current = activeTraceId;
+    }
   }, [activeTraceId]);
 
   useEffect(() => {
@@ -49,9 +55,12 @@ export function useTraceStream(activeTraceId: string | null) {
         
         // Listen for trace completion events
         unlistenComplete = await listen<TraceCompleteEvent>("trace:complete", (event) => {
-          // ignore events from old traces
-          if (!activeIdRef.current) return;
-          if (event.payload.trace_id !== activeIdRef.current) return;
+          // For completion events, check both current and last expected trace ID
+          // This handles potential race conditions where activeTraceId gets reset before
+          // the completion event is processed
+          if (!activeIdRef.current && !lastExpectedTraceIdRef.current) return;
+          if (event.payload.trace_id !== activeIdRef.current && 
+              event.payload.trace_id !== lastExpectedTraceIdRef.current) return;
 
           setCompletion(event.payload);
         });
