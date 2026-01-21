@@ -77,15 +77,15 @@ export const useTrace = () => {
   
   // Log when isTracing changes
   useEffect(() => {
-    logger.info('[use-trace] isTracing state changed to:', isTracing);
+    logger.info(`[use-trace] isTracing state changed to: ${isTracing}`);
   }, [isTracing]);
   
   // Handle completion event from backend
   useEffect(() => {
-    logger.info('[use-trace] Completion effect triggered, completion:', completion);
+    logger.info(`[use-trace] Completion effect triggered, completion: ${JSON.stringify(completion)}`);
     if (completion && !useSimulation) {
       logger.info('Received trace completion event, updating state');
-      logger.info('[use-trace] Processing completion event for trace_id=', completion.trace_id);
+      logger.info(`[use-trace] Processing completion event for trace_id= ${completion.trace_id}`);
       setResult(completion.result);
       // Update currentHops with the final result when trace completes
       setCurrentHops(completion.result.hops);
@@ -115,10 +115,10 @@ export const useTrace = () => {
     try {
       const startTime = new Date();
       
-      logger.debug('Invoking run_trace command with:', { target, options });
+      logger.debug(`Invoking run_trace command with: ${JSON.stringify({ target, options })}`);
       
       // Call Tauri command for real traceroute - now returns trace ID
-      const traceId = await invoke<string>("run_trace", {
+      const id = await invoke<string>("run_trace", {
         target,
         options: {
           maxHops: options.maxHops || 30,
@@ -128,25 +128,24 @@ export const useTrace = () => {
         }
       });
 
-      logger.info(`[use-trace] Raw trace ID received from Rust: ${traceId}, Type: ${typeof traceId}`);
-      logger.debug('Received trace ID:', traceId);
-      
+      setActiveTraceId(id);
+      setIsTracing(true);
+      logger.debug(`[React] Received trace ID: ${id}`);
+            
       // Validate that we got a proper trace ID
-      if (!traceId || typeof traceId !== 'string' || traceId.trim() === '') {
-        const errorMsg = `Invalid trace ID received: ${JSON.stringify(traceId)}`;
+      if (!id || typeof id !== 'string' || id.trim() === '') {
+        const errorMsg = `Invalid trace ID received: ${JSON.stringify(id)}`;
         setError(errorMsg);
         logger.error(errorMsg);
         throw new Error(errorMsg);
       }
-      
-      setActiveTraceId(traceId);
-
+            
       // Note: We don't wait for completion anymore since we're streaming
       // The UI will update in real-time via events
-      
+            
       // For backwards compatibility, we could poll for completion or
       // wait for a completion event, but for now we'll just return
-      return traceId;
+      return id;
 
     } catch (err) {
       // Properly handle Tauri invoke errors
