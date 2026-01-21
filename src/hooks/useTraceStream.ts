@@ -56,6 +56,8 @@ export function useTraceStream(activeTraceId: string | null) {
         // Listen for trace completion events
         unlistenComplete = await listen<TraceCompleteEvent>("trace:complete", (event) => {
           console.log('[React] [useTraceStream] Received trace:complete event:', event);
+          console.log('[React] [useTraceStream] trace:complete received for trace_id=', event.payload.trace_id);
+          
           // For completion events, check both current and last expected trace ID
           // This handles potential race conditions where activeTraceId gets reset before
           // the completion event is processed

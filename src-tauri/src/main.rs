@@ -47,9 +47,13 @@ fn emit_trace_complete(app: &AppHandle, trace_id: &str, result: &TraceResult) {
   };
 
   // emit to all windows (easy mode)
-  tracing::info!("[Rust] [TRACE] About to emit 'trace:complete' event");
+  tracing::info!("[Rust] [TRACE] About to emit 'trace:complete' event for trace_id: {}", trace_id);
   let emit_result = app.emit("trace:complete", payload);
   tracing::info!("[Rust] [TRACE] Event emit result: {:?}", emit_result);
+  match emit_result {
+      Ok(_) => tracing::info!("[Rust] [TRACE] emit 'trace:complete' event -> Ok(())"),
+      Err(e) => tracing::error!("[Rust] [TRACE] Failed to emit 'trace:complete' event: {}", e),
+  }
 }
 
 

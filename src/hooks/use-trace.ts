@@ -85,7 +85,7 @@ export const useTrace = () => {
     console.log('[React] [use-trace] Completion effect triggered, completion:', completion);
     if (completion && !useSimulation) {
       logger.info('Received trace completion event, updating state');
-      console.log('[React] [use-trace] Processing completion event for trace:', completion.trace_id);
+      console.log('[React] [use-trace] Processing completion event for trace_id=', completion.trace_id);
       setResult(completion.result);
       // Update currentHops with the final result when trace completes
       setCurrentHops(completion.result.hops);
@@ -128,7 +128,17 @@ export const useTrace = () => {
         }
       });
 
+      console.log('[React] [use-trace] Raw trace ID received from Rust:', traceId, 'Type:', typeof traceId);
       logger.debug('Received trace ID:', traceId);
+      
+      // Validate that we got a proper trace ID
+      if (!traceId || typeof traceId !== 'string' || traceId.trim() === '') {
+        const errorMsg = `Invalid trace ID received: ${JSON.stringify(traceId)}`;
+        setError(errorMsg);
+        logger.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+      
       setActiveTraceId(traceId);
 
       // Note: We don't wait for completion anymore since we're streaming
