@@ -47,10 +47,9 @@ fn emit_trace_complete(app: &AppHandle, trace_id: &str, result: &TraceResult) {
   };
 
   // emit to all windows (easy mode)
-  tracing::info!("[Rust] [TRACE] About to emit completion event for trace_id: {}", trace_id);
-  // Emit completion event to notify frontend
-  emit_trace_complete(&app, &trace_id, &result);
-  tracing::info!("[Rust] [TRACE] Completion event emitted for trace_id: {}", trace_id);
+  tracing::info!("[Rust] [TRACE] About to emit 'trace:complete' event");
+  let emit_result = app.emit("trace:complete", payload);
+  tracing::info!("[Rust] [TRACE] Event emit result: {:?}", emit_result);
 }
 
 
@@ -74,11 +73,11 @@ fn setup_single_instance_guard(app_data_dir: &Path) -> Result<(), Box<dyn std::e
         if let Ok(content) = std::fs::read_to_string(&lock_file_path) {
             if let Ok(existing_pid) = content.trim().parse::<u32>() {
                 if is_process_running(existing_pid) {
-                    tracing::warn!("[SINGLE_INSTANCE] Second instance detected, PID {} is still running. Exiting.", existing_pid);
-                    eprintln!("[SINGLE_INSTANCE] Another instance is already running (PID {}). Exiting.", existing_pid);
+                    tracing::warn!("[Rust] [SINGLE_INSTANCE] Second instance detected, PID {} is still running. Exiting.", existing_pid);
+                    eprintln!("[Rust] [SINGLE_INSTANCE] Another instance is already running (PID {}). Exiting.", existing_pid);
                     std::process::exit(1);
                 } else {
-                    tracing::info!("[SINGLE_INSTANCE] Lock file exists but process {} is not running. Removing stale lock.", existing_pid);
+                    tracing::info!("[Rust] [SINGLE_INSTANCE] Lock file exists but process {} is not running. Removing stale lock.", existing_pid);
                     let _ = std::fs::remove_file(&lock_file_path);
                 }
             }
@@ -94,7 +93,7 @@ fn setup_single_instance_guard(app_data_dir: &Path) -> Result<(), Box<dyn std::e
     }
     SINGLE_INSTANCE_ACTIVE.store(true, Ordering::SeqCst);
     
-    tracing::info!("[SINGLE_INSTANCE] Lock acquired for PID {}", current_pid);
+    tracing::info!("[Rust] [SINGLE_INSTANCE] Lock acquired for PID {}", current_pid);
     Ok(())
 }
 
@@ -104,7 +103,7 @@ fn cleanup_lock_file() {
         unsafe {
             if let Some(ref lock_path) = LOCK_FILE_PATH {
                 if std::fs::remove_file(lock_path).is_ok() {
-                    tracing::info!("[SINGLE_INSTANCE] Lock file cleaned up for PID {}", std::process::id());
+                    tracing::info!("[Rust] [SINGLE_INSTANCE] Lock file cleaned up for PID {}", std::process::id());
                 }
             }
         }
@@ -114,22 +113,22 @@ fn cleanup_lock_file() {
 
 #[tauri::command]
 fn log_debug(message: String) {
-    tracing::debug!("{}", message);
+    tracing::debug!("[React] {}", message);
 }
 
 #[tauri::command]
 fn log_info(message: String) {
-    tracing::info!("{}", message);
+    tracing::info!("[React] {}", message);
 }
 
 #[tauri::command]
 fn log_warn(message: String) {
-    tracing::warn!("{}", message);
+    tracing::warn!("[React] {}", message);
 }
 
 #[tauri::command]
 fn log_error(message: String) {
-    tracing::error!("{}", message);
+    tracing::error!("[React] {}", message);
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -199,18 +198,18 @@ async fn run_trace(
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
     let pid = std::process::id();
-    tracing::info!("[TRACE] run_trace start target='{}' pid={}", target, pid);
+    tracing::info!("[Rust] [TRACE] run_trace start target='{}' pid={}", target, pid);
 
     // Validate target to prevent command injection
     if !is_valid_target(&target) {
         let error_msg = "Invalid target format".to_string();
-        tracing::warn!("[TRACE] {} for target: {}", error_msg, target);
+        tracing::warn!("[Rust] [TRACE] {} for target: {}", error_msg, target);
         return Err(error_msg);
     }
 
     // Prepare command based on OS
     let (cmd, args) = prepare_trace_command(&target, &options)?;
-    tracing::debug!("[TRACE] Prepared command: '{}' with args: {:?}", cmd, args);
+    tracing::debug!("[Rust] [TRACE] Prepared command: '{}' with args: {:?}", cmd, args);
 
     // Create a unique ID for this trace
     let trace_id = uuid::Uuid::new_v4().to_string();
@@ -237,7 +236,7 @@ async fn run_trace(
             trace_id.clone(), 
             RunningTrace { cancel_notify, handle }
         );
-        tracing::debug!("[TRACE] Stored running trace with ID: {}", trace_id);
+        tracing::debug!("[Rust] [TRACE] Stored running trace with ID: {}", trace_id);
     }
     
     // Return the trace ID immediately so UI can start listening
@@ -252,7 +251,7 @@ async fn execute_trace_with_cancel(
     trace_id: String
 ) -> Result<TraceResult, String> {
     let pid = std::process::id();
-    tracing::info!("[TRACE] execute_trace_with_cancel start cmd='{}' args='{:?}' pid={}", cmd, args, pid);
+    tracing::info!("[Rust] [TRACE] execute_trace_with_cancel start cmd='{}' args='{:?}' pid={}", cmd, args, pid);
     
     // Create the command
     let mut child = Command::new(&cmd)
@@ -262,12 +261,12 @@ async fn execute_trace_with_cancel(
         .spawn()
         .map_err(|e| {
             let error_msg = format!("Failed to start {}: {}", cmd, e);
-            tracing::error!("[TRACE] Failed to spawn command: {}", error_msg);
+            tracing::error!("[Rust] [TRACE] Failed to spawn command: {}", error_msg);
             error_msg
         })?;
     
     let child_pid = child.id().unwrap_or(0);
-    tracing::info!("[TRACE] Child process spawned successfully pid={} cmd='{}'", child_pid, cmd);
+    tracing::info!("[Rust] [TRACE] Child process spawned successfully pid={} cmd='{}'", child_pid, cmd);
 
     // Create readers for both stdout and stderr
     let stdout = child.stdout.take().ok_or_else(|| "Failed to get stdout".to_string())?;
@@ -351,9 +350,9 @@ async fn execute_trace_with_cancel(
             _ = cancel_notify.notified() => {
                 tracing::info!("[Rust] [TRACE] Cancel notification received, killing process pid={}", child_pid);
                 let _ = child.kill().await;
-                tracing::debug!("raw_output bytes: {}", raw_output.len());
-                tracing::debug!("raw_output preview: {}", raw_output.lines().take(5).collect::<Vec<_>>().join(" | "));
-                return Err("Trace cancelled by user".to_string());
+                tracing::debug!("[Rust] raw_output bytes: {}", raw_output.len());
+                tracing::debug!("[Rust] raw_output preview: {}", raw_output.lines().take(5).collect::<Vec<_>>().join(" | "));
+                return Err("[Rust] Trace cancelled by user".to_string());
             }
         }
     }
@@ -371,7 +370,9 @@ async fn execute_trace_with_cancel(
             tracing::error!("[Rust] [TRACE] {}", error_msg);
             
             // Attempt to kill the process
-            let _ = child.kill().await;
+            if let Err(kill_err) = child.kill().await {
+                tracing::error!("[Rust] [TRACE] Failed to kill timed-out process: {}", kill_err);
+            }
             error_msg
         })?
         .map_err(|e| {
@@ -747,8 +748,8 @@ fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
         .try_init()
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
         
-    tracing::info!("[LIFECYCLE] App starting, PID={}", pid);
-    tracing::info!("[LIFECYCLE] Log file located at: {:?}", log_dir.join("tracert.log"));
+    tracing::info!("[Rust] [LIFECYCLE] App starting, PID={}", pid);
+    tracing::info!("[Rust] [LIFECYCLE] Log file located at: {:?}", log_dir.join("tracert.log"));
     
     Ok(())
 }
@@ -759,14 +760,14 @@ fn setup_panic_hook() {
         let backtrace = std::backtrace::Backtrace::capture();
         
         tracing::error!(
-            "[LIFECYCLE] Application panicked PID={}\npanic info: {}\nbacktrace: {:?}",
+            "[Rust] [LIFECYCLE] Application panicked PID={}\npanic info: {}\nbacktrace: {:?}",
             pid,
             panic_info,
             backtrace
         );
         
         eprintln!(
-            "[LIFECYCLE] Application panicked PID={}\npanic info: {}\nbacktrace: {:?}",
+            "[Rust] [LIFECYCLE] Application panicked PID={}\npanic info: {}\nbacktrace: {:?}",
             pid,
             panic_info,
             backtrace
@@ -777,7 +778,7 @@ fn setup_panic_hook() {
 fn setup_ctrlc_handler() {
     ctrlc::set_handler(move || {
         let pid = std::process::id();
-        tracing::info!("[LIFECYCLE] Received Ctrl+C signal, PID={}", pid);
+        tracing::info!("[Rust] [LIFECYCLE] Received Ctrl+C signal, PID={}", pid);
         cleanup_lock_file();
         std::process::exit(0);
     }).expect("Error setting Ctrl+C handler");
@@ -807,12 +808,12 @@ fn main() {
     std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
     
     if let Err(e) = setup_single_instance_guard(&app_data_dir) {
-        tracing::error!("Failed to setup single instance guard: {}", e);
+        tracing::error!("[Rust] Failed to setup single instance guard: {}", e);
         std::process::exit(1);
     }
     
     let pid = std::process::id();
-    tracing::info!("[LIFECYCLE] Setup complete, PID={}", pid);
+    tracing::info!("[Rust] [LIFECYCLE] Setup complete, PID={}", pid);
     
     tauri::Builder::default()
         .manage(AppState {
@@ -827,7 +828,7 @@ fn main() {
             log_error,
         ])
         .setup(|_app| {
-            tracing::info!("[LIFECYCLE] App setup completed, PID={}", std::process::id());
+            tracing::info!("[Rust] [LIFECYCLE] App setup completed, PID={}", std::process::id());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -835,15 +836,15 @@ fn main() {
         .run(|_app_handle, event| {
             match event {
                 tauri::RunEvent::ExitRequested { .. } => {
-                    tracing::info!("[LIFECYCLE] Exit requested, PID={}", std::process::id());
+                    tracing::info!("[Rust] [LIFECYCLE] Exit requested, PID={}", std::process::id());
                 }
                 tauri::RunEvent::Ready => {
-                    tracing::info!("[LIFECYCLE] App ready, PID={}", std::process::id());
+                    tracing::info!("[Rust] [LIFECYCLE] App ready, PID={}", std::process::id());
                 }
                 tauri::RunEvent::WindowEvent { label: _, event: _, .. } => {}
                 _ => {}
             }
         });
         
-    tracing::info!("[LIFECYCLE] App shutting down, PID={}", pid);
+    tracing::info!("[Rust] [LIFECYCLE] App shutting down, PID={}", pid);
 }
