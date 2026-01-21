@@ -228,7 +228,7 @@ async fn run_trace(
     let state_for_cleanup = state.inner().running_traces.clone(); // Clone the Arc<Mutex<>> for cleanup
     
     // Execute the traceroute command in a cancellable task
-    let trace_future = execute_trace_with_cancel(app_for_task, cmd, args, cancel_for_exec, trace_id_for_task);
+    let trace_future = execute_trace_with_cancel(app_for_task, cmd, args, cancel_for_exec, trace_id_for_task.clone());
     tracing::debug!("[Rust] [TRACE] About to spawn async task");
     let handle = tokio::spawn(async move {
         tracing::debug!("[Rust] [TRACE] Inside spawned task for trace_id: {}", trace_id_for_task);
