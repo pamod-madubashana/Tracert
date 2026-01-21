@@ -102,8 +102,18 @@ export const useTrace = () => {
           const hopIndex = updatedHops.findIndex(h => h.hop === event.payload.hop_data.hop);
           
           if (hopIndex >= 0) {
-            // Update existing hop
-            updatedHops[hopIndex] = event.payload.hop_data;
+            // Update existing hop - MERGE the data instead of replacing
+            const existingHop = updatedHops[hopIndex];
+            updatedHops[hopIndex] = {
+              ...existingHop,
+              ...event.payload.hop_data,
+              // Preserve existing data that might be missing in the update
+              geo: event.payload.hop_data.geo || existingHop.geo,
+              avgLatency: event.payload.hop_data.avgLatency || existingHop.avgLatency,
+              status: event.payload.hop_data.status || existingHop.status,
+              latencies: event.payload.hop_data.latencies.length > 0 ? 
+                event.payload.hop_data.latencies : existingHop.latencies
+            };
           } else {
             // Add new hop
             updatedHops.push(event.payload.hop_data);

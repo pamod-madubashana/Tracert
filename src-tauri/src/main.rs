@@ -457,7 +457,7 @@ async fn execute_trace_with_cancel(
                             
                             hops.push(hop_data.clone()); // Store the enriched hop
                             
-                            // Emit the enriched hop immediately
+                            // Emit the enriched hop immediately - now with complete data
                             if let Err(e) = emit_hop_update(app.clone(), &trace_id, hop_data).await {
                                 tracing::warn!("[Rust] [TRACE] Failed to emit hop update: {}", e);
                             }
