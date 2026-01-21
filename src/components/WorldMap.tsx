@@ -1,4 +1,4 @@
-import { HopData } from "@/types/trace";
+npmimport { HopData } from "@/types/trace";
 import { Globe } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
