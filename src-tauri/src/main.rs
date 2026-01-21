@@ -213,13 +213,14 @@ async fn run_trace(
 
     // Create a unique ID for this trace
     let trace_id = uuid::Uuid::new_v4().to_string();
+    let trace_id_for_cleanup = trace_id.clone(); // Clone for the cleanup task
     
     let cancel_notify = Arc::new(Notify::new());
     let cancel_for_task = cancel_notify.clone();
     let cancel_for_exec = cancel_notify.clone();
     let app_for_task = app.clone();
     let trace_id_for_task = trace_id.clone();
-    let state_clone = state.inner().clone();  // Clone the inner state for the task
+    let state_for_cleanup = state.inner().running_traces.clone(); // Clone the Arc<Mutex<>> for cleanup
     
     // Execute the traceroute command in a cancellable task
     let trace_future = execute_trace_with_cancel(app_for_task, cmd, args, cancel_for_exec, trace_id_for_task);
@@ -231,8 +232,8 @@ async fn run_trace(
         
         // Clean up the completed trace from the map after completion
         {
-            let mut running_traces = state_clone.running_traces.lock().await;
-            running_traces.remove(&trace_id);  // Use the trace_id that's captured in the async block
+            let mut running_traces = state_for_cleanup.lock().await;
+            running_traces.remove(&trace_id_for_cleanup);
         }
         
         result
