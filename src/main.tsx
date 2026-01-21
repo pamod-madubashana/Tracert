@@ -3,6 +3,9 @@ import App from "./App.tsx";
 import "./index.css";
 import { installTraps } from "./debug/traps";
 import { invoke } from "@tauri-apps/api/core";
+import { logger } from "@/lib/logger";
+
+
 
 // Extend Window interface to include our custom property
 declare global {
@@ -18,7 +21,7 @@ const generateSessionId = () => {
 };
 
 const logToFrontend = (message: string) => {
-  console.log(`[FRONTEND] ${message}`);
+  logger.info(`[FRONTEND] ${message}`);
 };
 
 const logToRust = async (level: "debug" | "info" | "warn" | "error", message: string) => {

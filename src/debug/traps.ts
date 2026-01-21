@@ -1,12 +1,14 @@
 // src/debug/traps.ts
 import { invoke } from "@tauri-apps/api/core";
+import { logger } from "@/lib/logger";
+
 
 const log = async (level: "debug" | "info" | "warn" | "error", msg: string) => {
   try {
     await invoke(`log_${level}`, { message: msg });
   } catch {
     // fallback if invoke not available
-    console.log(`[${level}] ${msg}`);
+    logger.info(`[${level}] ${msg}`);
   }
 };
 
