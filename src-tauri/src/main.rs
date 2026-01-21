@@ -699,11 +699,11 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
         
         let mut latencies = Vec::new();
         let mut ip_part = None;
-        let mut host_part = None;
+        let host_part = None;
         
         let mut i = 1; // Start after hop number
         
-        // Process up to 3 latency values
+        // Process up to 3 latency values - look for the pattern: number ms
         let mut latency_count = 0;
         while i < parts.len() && latency_count < 3 {
             let part = parts[i];
@@ -721,10 +721,8 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
             } else if part == "*" {
                 latencies.push(None);
                 latency_count += 1;
-            } else {
-                // This might be IP or host, break out of latency parsing
-                break;
             }
+            // If it's not a latency marker, continue to the next part
             i += 1;
         }
         
@@ -763,7 +761,7 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
     
     #[cfg(unix)]
     {
-        // Unix format: "1  192.168.1.1 (192.168.1.1)  1.234 ms  2.345 ms  3.456 ms"
+        // Unix format: "1  192.168.1.1 (192.168.1.1)  1.234 ms  2.345 ms  2.346 ms"
         let mut latencies = Vec::new();
         let mut ip_part = None;
         let mut host_part = None;
