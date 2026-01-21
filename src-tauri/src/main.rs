@@ -32,13 +32,12 @@ pub struct GeoLocation {
 // Static reference to the geolocation database
 static GEO_DB: Lazy<Option<Reader<Vec<u8>>>> = Lazy::new(|| {
     // Look for the geolocation database file in resources or app data
+    let base_dirs = BaseDirs::new();
+    let data_dir = base_dirs.as_ref().map(|dirs| dirs.data_dir()).unwrap_or(Path::new("."));
     let possible_paths = [
         "resources/GeoLite2-City.mmdb",
         "GeoLite2-City.mmdb",
-        &format!("{}/Local/tracert/GeoLite2-City.mmdb", BaseDirs::new()
-            .map(|dirs| dirs.data_dir())
-            .unwrap_or(Path::new("."))
-            .to_str().unwrap()),
+        &format!("{}/Local/tracert/GeoLite2-City.mmdb", data_dir.to_str().unwrap()),
     ];
     
     for path in &possible_paths {
@@ -220,15 +219,18 @@ async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
                 .as_ref()
                 .and_then(|c| c.names.as_ref())
                 .and_then(|n| n.get("en"))
-                .map(|s| s.to_string()); // Convert &str to String
+                .map(|s| s.to_string());
 
             let country_name = city.country
                 .as_ref()
                 .and_then(|c| c.names.as_ref())
                 .and_then(|n| n.get("en"))
-                .map(|s| s.to_string()); // Convert &str to String
+                .map(|s| s.to_string());
 
-            let country_code = city.country.as_ref().and_then(|c| c.iso_code.clone());
+            let country_code = city.country
+                .as_ref()
+                .and_then(|c| c.iso_code.as_ref())
+                .map(|s| s.to_string()); // Convert &str to String
 
             Ok(GeoResult {
                 ip,
@@ -1077,15 +1079,18 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
                 .as_ref()
                 .and_then(|c| c.names.as_ref())
                 .and_then(|n| n.get("en"))
-                .map(|s| s.to_string()); // Convert &str to String
+                .map(|s| s.to_string());
 
             let country_name = city.country
                 .as_ref()
                 .and_then(|c| c.names.as_ref())
                 .and_then(|n| n.get("en"))
-                .map(|s| s.to_string()); // Convert &str to String
+                .map(|s| s.to_string());
 
-            let country_code = city.country.as_ref().and_then(|c| c.iso_code.clone());
+            let country_code = city.country
+                .as_ref()
+                .and_then(|c| c.iso_code.as_ref())
+                .map(|s| s.to_string()); // Convert &str to String
 
             Ok(GeoResult {
                 ip,
