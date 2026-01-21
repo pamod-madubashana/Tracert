@@ -231,7 +231,7 @@ function parseTracerouteLine(line: string): HopData | undefined {
   // Windows tracert format: " 1     7 ms     4 ms     2 ms  192.168.1.1"
   // Split by whitespace and filter out empty strings
   const parts = trimmedLine.split(/\s+/).filter(part => part.length > 0);
-  if (parts.length < 2) return undefined;
+  if (parts.length < 5) return undefined; // Need at least hop#, 3 times, and IP
   
   // Extract hop number (first part)
   const hopNum = parseInt(parts[0]);
@@ -246,10 +246,10 @@ function parseTracerouteLine(line: string): HopData | undefined {
   let i = 1;
   let latencyCount = 0;
   
-  // First, collect all latency values (numbers followed by "ms")
-  while (i < parts.length && latencyCount < 3) {
+  // First, collect all latency values (they follow the pattern: number ms)
+  while (i < parts.length - 1 && latencyCount < 3) { // Leave at least one part for IP
     const currentPart = parts[i];
-    const nextPart = i + 1 < parts.length ? parts[i + 1] : null;
+    const nextPart = parts[i + 1];
     
     // Look for the pattern: "number" followed by "ms"
     if (nextPart === "ms" && !isNaN(parseFloat(currentPart)) && latencyCount < 3) {
@@ -264,22 +264,23 @@ function parseTracerouteLine(line: string): HopData | undefined {
       i++;
       latencyCount++;
     } else {
-      // Not a latency pattern, move to next
-      i++;
+      // This might be IP or host, break out of latency parsing
+      break;
     }
   }
   
-  // Now look for IP address after the latency values
-  for (let j = i; j < parts.length; j++) {
+  // Now look for IP address in the remaining parts
+  // The IP should be the last part that looks like an IP address
+  for (let j = parts.length - 1; j >= i; j--) {
     const part = parts[j];
-    // Check if this looks like an IP address (contains dots or colons)
-    if ((part.includes('.') && isValidIPFormat(part)) || part.includes(':')) {
+    // Check if this looks like an IP address (contains dots and is a valid format)
+    if (part.includes('.') && isValidIPFormat(part)) {
       ipPart = part;
       break;
     }
   }
   
-  // If we found fewer than 3 latencies, pad with undefined
+  // Pad latencies to exactly 3 values if needed
   while (latencies.length < 3) {
     latencies.push(undefined);
   }
