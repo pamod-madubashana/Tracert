@@ -198,6 +198,8 @@ export const useTrace = () => {
 
 // Simple parser for traceroute output lines
 function parseTracerouteLine(line: string): HopData | undefined {
+  console.log(`[PARSE] Called with line: "${line}"`);
+  
   // Trim the line
   const trimmedLine = line.trim();
   
@@ -206,6 +208,7 @@ function parseTracerouteLine(line: string): HopData | undefined {
       trimmedLine.startsWith("Tracing") || 
       trimmedLine.startsWith("over a maximum") || 
       trimmedLine.startsWith("Trace complete")) {
+    console.log(`[PARSE] Skipping line: "${trimmedLine}"`);
     return undefined;
   }
   
@@ -232,13 +235,19 @@ function parseTracerouteLine(line: string): HopData | undefined {
   // Windows tracert format: " 1     7 ms     4 ms     2 ms  192.168.1.1"
   // Split by whitespace and filter out empty strings
   const parts = trimmedLine.split(/\s+/).filter(part => part.length > 0);
-  if (parts.length < 5) return undefined; // Need at least hop#, 3 times, and IP
+  if (parts.length < 5) {
+    console.log(`[PARSE] Not enough parts (${parts.length}), returning undefined`);
+    return undefined; // Need at least hop#, 3 times, and IP
+  }
   
   console.debug(`[DEBUG] Parsing line: "${trimmedLine}", parts:`, parts);
   
   // Extract hop number (first part)
   const hopNum = parseInt(parts[0]);
-  if (isNaN(hopNum)) return undefined;
+  if (isNaN(hopNum)) {
+    console.log(`[PARSE] Invalid hop number: "${parts[0]}"`);
+    return undefined;
+  }
   
   // Extract latencies - look for exactly 3 latency values with "ms" units
   const latencies: (number | undefined)[] = [];

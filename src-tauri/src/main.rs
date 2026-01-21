@@ -438,7 +438,11 @@ async fn execute_trace_with_cancel(
                         
                         // Try to parse the line for hop data
                         if let Some(hop_data) = parse_traceroute_line(&line) {
+                            tracing::debug!("[Rust] [TRACE] Parsed hop data: hop={}, ip={:?}, latencies={:?}", 
+                                          hop_data.hop, hop_data.ip, hop_data.latencies);
                             hops.push(hop_data);
+                        } else {
+                            tracing::debug!("[Rust] [TRACE] Line did not parse as hop: {}", line);
                         }
                     }
                     Ok(None) => {
@@ -464,7 +468,11 @@ async fn execute_trace_with_cancel(
                         
                         // On Windows, tracert writes to stderr, so we should also try to parse stderr lines
                         if let Some(hop_data) = parse_traceroute_line(&line) {
+                            tracing::debug!("[Rust] [TRACE] Parsed hop data from stderr: hop={}, ip={:?}, latencies={:?}", 
+                                          hop_data.hop, hop_data.ip, hop_data.latencies);
                             hops.push(hop_data);
+                        } else {
+                            tracing::debug!("[Rust] [TRACE] stderr line did not parse as hop: {}", line);
                         }
                     }
                     Ok(None) => {
@@ -496,8 +504,8 @@ async fn execute_trace_with_cancel(
         tokio::time::Duration::from_secs(60), // 60 second timeout
         child.wait()
     ).await
-        .map_err(|_| {
-            let error_msg = format!("Process timed out after 60 seconds, killing process pid={}", child_pid);
+        .map_err(|e| {
+            let error_msg = format!("Process timed out after 60 seconds, killing process pid={}: {}", child_pid, e);
             tracing::error!("[Rust] [TRACE] {}", error_msg);
             error_msg
         })?
@@ -721,34 +729,14 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
         }
         
         // The remaining parts should contain IP/address
-        while i < parts.len() {
-            let part = parts[i];
-            // If it looks like an IP or hostname (not a latency value)
-            if !part.ends_with("ms") && part != "ms" && part != "*" {
-                if part.contains('.') || part.contains(':') || part.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '(' || c == ')' || c == '[' || c == ']') {
-                    if ip_part.is_none() {
-                        // Try to extract IP from part that might contain hostname and IP
-                        if part.contains('[') && part.contains(']') {
-                            // Format like "hostname [192.168.1.1]"
-                            if let Some(start) = part.find('[') {
-                                if let Some(end) = part.find(']') {
-                                    ip_part = Some(part[start+1..end].to_string());
-                                }
-                            }
-                            // Extract hostname separately if present
-                            if let Some(bracket_pos) = part.find('[') {
-                                let hostname_part = part[..bracket_pos].trim();
-                                if !hostname_part.is_empty() && hostname_part != "Request" && hostname_part != "tracert" {
-                                    host_part = Some(hostname_part.to_string());
-                                }
-                            }
-                        } else {
-                            ip_part = Some(part.to_string());
-                        }
-                    }
-                }
+        // Look for the IP address at the end of the line
+        for j in i..parts.len() {
+            let part = parts[j];
+            // If it looks like an IP (contains dots and valid format)
+            if part.contains('.') && is_valid_ipv4_format(part) {
+                ip_part = Some(part.to_string());
+                break;
             }
-            i += 1;
         }
         
         // Calculate average latency if we have valid samples
@@ -838,6 +826,25 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
             geo: None,
         })
     }
+}
+
+// Helper function to validate IPv4 format
+fn is_valid_ipv4_format(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() != 4 {
+        return false;
+    }
+    
+    for part in parts {
+        if let Ok(num) = part.parse::<u8>() {
+            if num > 255 {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
