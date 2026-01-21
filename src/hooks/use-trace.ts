@@ -363,7 +363,7 @@ function parseTracerouteLine(line: string): HopData | undefined {
     hop: hopNum,
     host: hostPart,
     ip: ipPart,
-    latencies: latencies as (number | undefined)[],
+    latencies: [], // Empty array since we only show average
     avgLatency,
     status: validLatencies.length > 0 ? "success" : "timeout",
     geo: undefined // Will be populated by the backend with real geolocation data

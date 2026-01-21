@@ -780,18 +780,18 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
         let valid_latencies: Vec<f64> = latencies.iter()
             .filter_map(|opt| *opt)
             .collect();
-        
+            
         let avg_latency = if !valid_latencies.is_empty() {
             Some(valid_latencies.iter().sum::<f64>() / valid_latencies.len() as f64)
         } else {
             None
         };
-        
+            
         Some(HopData {
             hop: hop_num,
             host: host_part,
             ip: ip_part,
-            latencies,
+            latencies: vec![], // Empty array since we only show average
             avg_latency,
             status: if !valid_latencies.is_empty() { "success".to_string() } else { "timeout".to_string() },
             geo: None,
@@ -857,7 +857,7 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
             hop: hop_num,
             host: host_part,
             ip: ip_part,
-            latencies,
+            latencies: vec![], // Empty array since we only show average
             avg_latency,
             status: if !valid_latencies.is_empty() { "success".to_string() } else { "timeout".to_string() },
             geo: None,

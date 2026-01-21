@@ -43,14 +43,11 @@ const HopsTable = ({ hops, compact = false }: HopsTableProps) => {
                     <span>Location</span>
                   </div>
                 </th>
-                <th className="w-20">
+                <th className="w-40">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    <span>Avg</span>
+                    <span>Latency</span>
                   </div>
-                </th>
-                <th className="w-40">
-                  <span>Latency</span>
                 </th>
                 <th className="w-20">Status</th>
               </tr>
@@ -87,22 +84,6 @@ const HopsTable = ({ hops, compact = false }: HopsTableProps) => {
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {hop.latencies.map((lat, i) => (
-                        <span 
-                          key={i}
-                          className={`px-1.5 py-0.5 rounded text-[10px] ${
-                            lat === "*" 
-                              ? "text-muted-foreground" 
-                              : "bg-primary/10 text-primary border border-primary/30"
-                          }`}
-                        >
-                          {lat === "*" ? "*" : `${lat}`}
-                        </span>
-                      ))}
-                    </div>
                   </td>
                   <td>
                     <span 
