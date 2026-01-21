@@ -102,16 +102,17 @@ export const useTrace = () => {
           const hopIndex = updatedHops.findIndex(h => h.hop === event.payload.hop_data.hop);
           
           if (hopIndex >= 0) {
-            // Update existing hop - MERGE the data instead of replacing
+            // Update existing hop - properly merge all available data
             const existingHop = updatedHops[hopIndex];
             updatedHops[hopIndex] = {
-              ...existingHop,
-              ...event.payload.hop_data,
-              // Preserve existing data that might be missing in the update
+              ...existingHop, // Start with existing data
+              ...event.payload.hop_data, // Apply new data
+              // Specifically preserve/merge important fields
               geo: event.payload.hop_data.geo || existingHop.geo,
-              avgLatency: event.payload.hop_data.avgLatency || existingHop.avgLatency,
+              avgLatency: event.payload.hop_data.avgLatency ?? existingHop.avgLatency,
               status: event.payload.hop_data.status || existingHop.status,
-              latencies: event.payload.hop_data.latencies.length > 0 ? 
+              // For latencies, only update if the new data has values
+              latencies: event.payload.hop_data.latencies?.length > 0 ? 
                 event.payload.hop_data.latencies : existingHop.latencies
             };
           } else {
