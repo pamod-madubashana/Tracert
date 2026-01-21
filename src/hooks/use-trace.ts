@@ -215,6 +215,7 @@ function parseTracerouteLine(line: string): HopData | undefined {
     const hopMatch = trimmedLine.match(/^(\d+)/);
     const hopNum = hopMatch ? parseInt(hopMatch[1]) : 0;
     if (hopNum > 0) {
+      console.debug(`[DEBUG] Timeout line parsed: hop=${hopNum}`);
       return {
         hop: hopNum,
         host: undefined,
@@ -233,67 +234,60 @@ function parseTracerouteLine(line: string): HopData | undefined {
   const parts = trimmedLine.split(/\s+/).filter(part => part.length > 0);
   if (parts.length < 5) return undefined; // Need at least hop#, 3 times, and IP
   
+  console.debug(`[DEBUG] Parsing line: "${trimmedLine}", parts:`, parts);
+  
   // Extract hop number (first part)
   const hopNum = parseInt(parts[0]);
   if (isNaN(hopNum)) return undefined;
   
-  // Extract latencies and IP
+  // Extract latencies - look for exactly 3 latency values with "ms" units
   const latencies: (number | undefined)[] = [];
   let ipPart: string | undefined = undefined;
   let hostPart: string | undefined = undefined;
   
-  // Process parts after hop number to find latencies and IP
-  let i = 1;
+  // Find latency values (number followed by "ms")
   let latencyCount = 0;
+  let i = 1; // Start after hop number
   
-  // First, collect all latency values (they follow the pattern: number ms)
-  while (i < parts.length - 1 && latencyCount < 3) { // Leave at least one part for IP
-    const currentPart = parts[i];
-    const nextPart = parts[i + 1];
-    
-    // Look for the pattern: "number" followed by "ms"
-    if (nextPart === "ms" && !isNaN(parseFloat(currentPart)) && latencyCount < 3) {
-      // This is a latency value
-      const time = parseFloat(currentPart.replace("<", ""));
-      latencies.push(isNaN(time) ? undefined : time);
-      i += 2; // Skip both value and "ms"
+  // Look for the pattern: number ms number ms number ms
+  while (i < parts.length - 1 && latencyCount < 3) {
+    if (parts[i + 1] === "ms" && !isNaN(parseFloat(parts[i]))) {
+      const time = parseFloat(parts[i].replace("<", ""));
+      const latencyValue = isNaN(time) ? undefined : time;
+      latencies.push(latencyValue);
+      console.debug(`[DEBUG] Found latency: ${latencyValue} at position ${i}`);
+      i += 2; // Skip number and "ms"
       latencyCount++;
-    } else if (currentPart === "*" && latencyCount < 3) {
-      // Timeout marker
+    } else if (parts[i] === "*") {
       latencies.push(undefined);
+      console.debug(`[DEBUG] Found timeout marker at position ${i}`);
       i++;
       latencyCount++;
     } else {
-      // This might be IP or host, break out of latency parsing
-      break;
+      console.debug(`[DEBUG] Stopping latency parsing at position ${i}, part="${parts[i]}"`);
+      break; // Stop if we don't find the expected pattern
     }
   }
   
-  // Now look for IP address in the remaining parts
-  // The IP should be the last part that looks like an IP address
-  for (let j = parts.length - 1; j >= i; j--) {
-    const part = parts[j];
-    // Check if this looks like an IP address (contains dots and is a valid format)
-    if (part.includes('.') && isValidIPFormat(part)) {
-      ipPart = part;
-      break;
-    }
-  }
+  console.debug(`[DEBUG] Latency parsing complete: ${latencies.length} latencies found`);
   
-  // If we couldn't find a valid IP, try to find any part that looks like an IP
-  if (!ipPart) {
-    for (let j = i; j < parts.length; j++) {
-      const part = parts[j];
-      if (part.includes('.') && /\d+\.\d+\.\d+\.\d+/.test(part)) {
-        ipPart = part;
-        break;
-      }
+  // The IP address should be the last part
+  if (i < parts.length) {
+    const lastPart = parts[parts.length - 1];
+    console.debug(`[DEBUG] Checking last part for IP: "${lastPart}"`);
+    // Check if it's a valid IP address
+    if (lastPart.includes('.') && isValidIPFormat(lastPart)) {
+      ipPart = lastPart;
+      console.debug(`[DEBUG] Valid IP found: ${ipPart}`);
+    } else {
+      console.debug(`[DEBUG] Last part is not a valid IP: "${lastPart}"`);
     }
   }
   
   // Pad latencies to exactly 3 values if needed
   while (latencies.length < 3) {
     latencies.push(undefined);
+    console.debug(`[DEBUG] Padded latencies to maintain 3 elements`);
   }
   
   // Calculate average latency from valid samples and round to integer
@@ -302,6 +296,8 @@ function parseTracerouteLine(line: string): HopData | undefined {
     ? Math.round(validLatencies.reduce((sum, val) => sum + val, 0) / validLatencies.length)
     : undefined;
     
+  console.debug(`[DEBUG] Final parsed hop: ${hopNum}, ip: "${ipPart}", latencies: [${latencies.join(', ')}], status: ${validLatencies.length > 0 ? "success" : "timeout"}`);
+  
   return {
     hop: hopNum,
     host: hostPart,
@@ -315,16 +311,20 @@ function parseTracerouteLine(line: string): HopData | undefined {
 
 // Helper function to validate IP address format
 function isValidIPFormat(str: string): boolean {
+  console.debug(`[DEBUG] Validating IP format: "${str}"`);
   // Check if it's a valid IPv4 format
   const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
   if (ipv4Pattern.test(str)) {
     // Further validate each octet is between 0-255
     const octets = str.split('.');
-    return octets.every(octet => {
+    const isValid = octets.every(octet => {
       const num = parseInt(octet);
       return num >= 0 && num <= 255;
     });
+    console.debug(`[DEBUG] IP "${str}" validation result: ${isValid}`);
+    return isValid;
   }
+  console.debug(`[DEBUG] IP "${str}" failed initial pattern test`);
   return false;
 }
 

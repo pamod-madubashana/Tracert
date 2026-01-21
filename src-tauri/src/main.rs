@@ -986,11 +986,19 @@ fn main() {
 
 // Function to enrich hop data with geolocation information
 async fn enrich_hops_with_geolocation(mut hops: Vec<HopData>) -> Vec<HopData> {
+    tracing::debug!("[Rust] [GEO] Starting geolocation enrichment for {} hops", hops.len());
+    
     for hop in &mut hops {
         if let Some(ref ip) = hop.ip {
+            tracing::debug!("[Rust] [GEO] Processing hop {} with IP: {}", hop.hop, ip);
+            
             // Only look up geolocation for public IPs, not private ones
             if !is_private_ip(ip) {
+                tracing::debug!("[Rust] [GEO] IP {} is public, attempting geolocation lookup", ip);
                 if let Ok(geo_result) = geo_lookup_inner(ip.clone()).await {
+                    tracing::debug!("[Rust] [GEO] Geolocation lookup result for {}: lat={:?}, lng={:?}, city={:?}", 
+                                   ip, geo_result.lat, geo_result.lng, geo_result.city);
+                    
                     if geo_result.lat.is_some() && geo_result.lng.is_some() {
                         hop.geo = Some(GeoLocation {
                             lat: geo_result.lat.unwrap(),
@@ -999,6 +1007,7 @@ async fn enrich_hops_with_geolocation(mut hops: Vec<HopData>) -> Vec<HopData> {
                             country: geo_result.country,
                             country_code: geo_result.country_code,
                         });
+                        tracing::debug!("[Rust] [GEO] Successfully enriched hop {} with geolocation data", hop.hop);
                     } else if geo_result.city.is_some() && geo_result.city.as_ref().unwrap() != "Unknown" {
                         // Even if lat/lng are unavailable, we can still show location info
                         hop.geo = Some(GeoLocation {
@@ -1008,9 +1017,15 @@ async fn enrich_hops_with_geolocation(mut hops: Vec<HopData>) -> Vec<HopData> {
                             country: geo_result.country,
                             country_code: geo_result.country_code,
                         });
+                        tracing::debug!("[Rust] [GEO] Enriched hop {} with partial geolocation data (city only)", hop.hop);
+                    } else {
+                        tracing::debug!("[Rust] [GEO] No usable geolocation data found for hop {}", hop.hop);
                     }
+                } else {
+                    tracing::debug!("[Rust] [GEO] Geolocation lookup failed for hop {}", hop.hop);
                 }
             } else {
+                tracing::debug!("[Rust] [GEO] IP {} is private, setting Private/Internal location", ip);
                 // For private IPs, set appropriate location info
                 hop.geo = Some(GeoLocation {
                     lat: 0.0,
@@ -1020,31 +1035,45 @@ async fn enrich_hops_with_geolocation(mut hops: Vec<HopData>) -> Vec<HopData> {
                     country_code: Some("PR".to_string()),
                 });
             }
+        } else {
+            tracing::debug!("[Rust] [GEO] Hop {} has no IP address, skipping geolocation", hop.hop);
         }
     }
+    
+    tracing::debug!("[Rust] [GEO] Completed geolocation enrichment for {} hops", hops.len());
     hops
 }
 
 // Helper function to check if an IP is private
 fn is_private_ip(ip_str: &str) -> bool {
-    ip_str.starts_with("10.") || 
+    tracing::debug!("[Rust] [GEO] Checking if IP {} is private", ip_str);
+    
+    let is_private = ip_str.starts_with("10.") || 
     ip_str.starts_with("192.168.") || 
     (ip_str.starts_with("172.") && {
         let parts: Vec<&str> = ip_str.split('.').collect();
         if parts.len() > 1 {
             if let Ok(second_octet) = parts[1].parse::<u8>() {
-                (16..=31).contains(&second_octet)
+                let is_private_range = (16..=31).contains(&second_octet);
+                tracing::debug!("[Rust] [GEO] 172.x.x.x second octet: {}, private range: {}", second_octet, is_private_range);
+                is_private_range
             } else {
+                tracing::debug!("[Rust] [GEO] Failed to parse second octet for 172.x.x.x IP");
                 false
             }
         } else {
             false
         }
-    })
+    });
+    
+    tracing::debug!("[Rust] [GEO] IP {} is private: {}", ip_str, is_private);
+    is_private
 }
 
 // Internal function to perform geolocation lookup
 async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
+    tracing::debug!("[Rust] [GEO] Starting geolocation lookup for IP: {}", ip);
+    
     // Check if it's a private IP - don't look up geolocation for private IPs
     if ip.starts_with("10.") || 
        ip.starts_with("192.168.") || 
@@ -1057,6 +1086,7 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
                false
            }
        }) {
+        tracing::debug!("[Rust] [GEO] Skipping geolocation for private IP: {}", ip);
         return Ok(GeoResult {
             ip,
             lat: None,
@@ -1067,8 +1097,15 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
         });
     }
 
-    let db = GEO_DB.as_ref().ok_or_else(|| "Geolocation database not loaded".to_string())?;
-    let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
+    let db = GEO_DB.as_ref().ok_or_else(|| {
+        tracing::warn!("[Rust] [GEO] Geolocation database not loaded");
+        "Geolocation database not loaded".to_string()
+    })?;
+    
+    let addr: std::net::IpAddr = ip.parse().map_err(|e| {
+        tracing::warn!("[Rust] [GEO] Invalid IP address {}: {}", ip, e);
+        "Invalid IP address".to_string()
+    })?;
 
     match db.lookup::<maxminddb::geoip2::City>(addr) {
         Ok(city) => {
@@ -1090,8 +1127,11 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
             let country_code = city.country
                 .as_ref()
                 .and_then(|c| c.iso_code.as_ref())
-                .map(|s| s.to_string()); // Convert &str to String
+                .map(|s| s.to_string());
 
+            tracing::debug!("[Rust] [GEO] Successful lookup for {}: lat={:?}, lng={:?}, city={:?}, country={:?}",
+                           ip, lat, lng, city_name, country_name);
+            
             Ok(GeoResult {
                 ip,
                 lat,
@@ -1101,14 +1141,17 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
                 country_code,
             })
         }
-        Err(_) => Ok(GeoResult {
-            ip,
-            lat: None,
-            lng: None,
-            city: Some("Unknown".to_string()),
-            country: Some("Unknown".to_string()),
-            country_code: None,
-        }),
+        Err(e) => {
+            tracing::debug!("[Rust] [GEO] Geolocation lookup failed for {}: {}", ip, e);
+            Ok(GeoResult {
+                ip,
+                lat: None,
+                lng: None,
+                city: Some("Unknown".to_string()),
+                country: Some("Unknown".to_string()),
+                country_code: None,
+            })
+        },
     }
 }
 
