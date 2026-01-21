@@ -243,47 +243,50 @@ function parseTracerouteLine(line: string): HopData | undefined {
   
   // Process parts after hop number to find latencies and IP
   let i = 1;
-  while (i < parts.length) {
+  let latencyCount = 0;
+  
+  // First, collect all latency values (numbers followed by "ms")
+  while (i < parts.length && latencyCount < 3) {
     const currentPart = parts[i];
     const nextPart = i + 1 < parts.length ? parts[i + 1] : null;
     
     // Look for the pattern: "number" followed by "ms"
-    if (nextPart === "ms" && !isNaN(parseFloat(currentPart))) {
+    if (nextPart === "ms" && !isNaN(parseFloat(currentPart)) && latencyCount < 3) {
       // This is a latency value
       const time = parseFloat(currentPart.replace("<", ""));
       latencies.push(isNaN(time) ? undefined : time);
       i += 2; // Skip both value and "ms"
-    } else if (currentPart === "*") {
+      latencyCount++;
+    } else if (currentPart === "*" && latencyCount < 3) {
       // Timeout marker
       latencies.push(undefined);
       i++;
-    } else if (currentPart.includes('.') || currentPart.includes(':')) {
-      // This is the IP address
-      ipPart = currentPart;
-      break; // Stop after finding IP
-    } else if (!isNaN(parseFloat(currentPart)) && !nextPart?.endsWith("ms")) {
-      // If it's just a number and not followed by "ms", it might be part of IP (rare case)
-      // Skip it for now
-      i++;
+      latencyCount++;
     } else {
-      i++; // Move to next part
+      // Not a latency pattern, move to next
+      i++;
     }
-    // Otherwise, skip this part
   }
   
-  // Pad latencies to exactly 3 values if needed
+  // Now look for IP address after the latency values
+  for (let j = i; j < parts.length; j++) {
+    const part = parts[j];
+    // Check if this looks like an IP address (contains dots or colons)
+    if ((part.includes('.') && isValidIPFormat(part)) || part.includes(':')) {
+      ipPart = part;
+      break;
+    }
+  }
+  
+  // If we found fewer than 3 latencies, pad with undefined
   while (latencies.length < 3) {
     latencies.push(undefined);
   }
-  // Truncate if we have more than 3
-  if (latencies.length > 3) {
-    latencies.length = 3;
-  }
   
-  // Calculate average latency from valid samples
+  // Calculate average latency from valid samples and round to integer
   const validLatencies = latencies.filter(lat => lat !== undefined) as number[];
   const avgLatency = validLatencies.length > 0 
-    ? validLatencies.reduce((sum, val) => sum + val, 0) / validLatencies.length
+    ? Math.round(validLatencies.reduce((sum, val) => sum + val, 0) / validLatencies.length)
     : undefined;
     
   return {
@@ -294,6 +297,22 @@ function parseTracerouteLine(line: string): HopData | undefined {
     avgLatency,
     status: validLatencies.length > 0 ? "success" : "timeout"
   };
+}
+
+// Helper function to validate IP address format
+function isValidIPFormat(str: string): boolean {
+  // Check if it's a valid IPv4 format (basic validation)
+  const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (ipv4Pattern.test(str)) {
+    // Further validate each octet is between 0-255
+    const octets = str.split('.');
+    return octets.every(octet => {
+      const num = parseInt(octet);
+      return num >= 0 && num <= 255;
+    });
+  }
+  // For now, just check if it has multiple dots (IPv4) or colons (IPv6)
+  return str.split('.').length > 2 || str.includes(':');
 }
 
 // Export the original simulation hook for explicit usage
