@@ -368,11 +368,6 @@ async fn execute_trace_with_cancel(
         .map_err(|_| {
             let error_msg = format!("Process timed out after 60 seconds, killing process pid={}", child_pid);
             tracing::error!("[Rust] [TRACE] {}", error_msg);
-            
-            // Attempt to kill the process
-            if let Err(kill_err) = child.kill().await {
-                tracing::error!("[Rust] [TRACE] Failed to kill timed-out process: {}", kill_err);
-            }
             error_msg
         })?
         .map_err(|e| {
