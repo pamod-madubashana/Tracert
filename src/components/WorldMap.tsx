@@ -75,6 +75,10 @@ const WorldMap = ({ hops, compact = false, selectedHop = null, onSelectHop }: Wo
   const particleTickRef = useRef<number | null>(null);
   const particlesRef = useRef<ParticleDef[]>([]);
   const particleItemByIdRef = useRef<Record<string, am5.DataItem<any> | undefined>>({});
+  
+  // Focus optimization refs
+  const didInitialFocusRef = useRef(false);
+  const focusedOriginKeyRef = useRef<string | null>(null);
 
   const selectedHopRef = useRef<number | null>(selectedHop);
   const onSelectHopRef = useRef<WorldMapProps["onSelectHop"]>(onSelectHop);
@@ -196,6 +200,15 @@ const WorldMap = ({ hops, compact = false, selectedHop = null, onSelectHop }: Wo
     hops.filter(h => h.ip && !isPrivateIp(h.ip) && hasValidGeo(h)), 
     [hops]
   );
+
+  // Reset focus flags when a new trace starts
+  useEffect(() => {
+    // new trace: no geo points yet
+    if (hopsWithGeo.length === 0) {
+      didInitialFocusRef.current = false;
+      focusedOriginKeyRef.current = null;
+    }
+  }, [hopsWithGeo.length]);
 
   useEffect(() => {
     if (!chartDivRef.current) return;
@@ -523,9 +536,21 @@ const WorldMap = ({ hops, compact = false, selectedHop = null, onSelectHop }: Wo
       }, 40);
     }
       
-    // Focus on the origin point if it exists
-    if (originGeo && originGeo.geo) {
-      chart.zoomToGeoPoint({ longitude: originGeo.geo.lng!, latitude: originGeo.geo.lat! }, 3, true);
+    // Focus on the origin point if it exists (only once per trace or origin change)
+    if (originGeo?.geo?.lng != null && originGeo?.geo?.lat != null) {
+      const key = `${originGeo.hop}:${originGeo.geo.lng}:${originGeo.geo.lat}`;
+
+      // focus only once per trace (or if origin actually changes)
+      if (!didInitialFocusRef.current || focusedOriginKeyRef.current !== key) {
+        didInitialFocusRef.current = true;
+        focusedOriginKeyRef.current = key;
+
+        chart.zoomToGeoPoint(
+          { longitude: originGeo.geo.lng, latitude: originGeo.geo.lat },
+          3,
+          true
+        );
+      }
     }
   }, [compact, hopsWithGeo, originGeo]);
 
