@@ -30,7 +30,7 @@ interface TraceOptions {
 export const useTrace = () => {
   const [isTracing, setIsTracing] = useState(false);
   const [result, setResult] = useState<TraceResult | null>(null);
-  const [currentHops, setCurrentHops] = useState<HopData[]>([]);
+  const [hopsByHop, setHopsByHop] = useState<Map<number, HopData>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [activeTraceId, setActiveTraceId] = useState<string | null>(null);
   
@@ -46,48 +46,50 @@ export const useTrace = () => {
   const effectiveIsTracing = useSimulation ? isSimTracing : isTracing;
   const effectiveResult = useSimulation ? simResult : result;
   
-  // Process streaming lines to update hops in real-time when not using simulation
-  useEffect(() => {
-    logger.info(`[use-trace] Processing streaming lines, isTracing: ${isTracing}, lines count: ${lines.length}`);
-    if (useSimulation || !lines || lines.length === 0 || !isTracing) return;
-    
-    // Parse the streaming lines to update hops in real-time
-    const newHops: HopData[] = [];
-    
-    lines.forEach((lineEvent) => {
-      const hopData = parseTracerouteLine(lineEvent.line);
-      if (hopData) {
-        // Check if this hop already exists to avoid duplicates
-        const existingIndex = newHops.findIndex(h => h.hop === hopData.hop);
-        if (existingIndex >= 0) {
-          newHops[existingIndex] = hopData; // Update existing hop
-        } else {
-          newHops.push(hopData); // Add new hop
-        }
-      }
-    });
-    
-    // Sort hops by hop number
-    newHops.sort((a, b) => a.hop - b.hop);
-    
-    setCurrentHops(newHops);
-  }, [lines, useSimulation, isTracing]);
-  
   // Use real-time hops during tracing, final result hops after completion
-  const effectiveHops = useSimulation ? simHops : (isTracing ? currentHops : (result ? result.hops : currentHops));
-  
+  const effectiveHops = useSimulation ? simHops : (isTracing ? 
+    Array.from(hopsByHop.values()).sort((a, b) => a.hop - b.hop) : 
+    (result ? result.hops : Array.from(hopsByHop.values()).sort((a, b) => a.hop - b.hop)));
+
   // Log when isTracing changes
   useEffect(() => {
     logger.info(`[use-trace] isTracing state changed to: ${isTracing}`);
   }, [isTracing]);
   
-  // Handle hop updates for real-time location updates
+  // Process streaming lines to update hops in real-time when not using simulation
+  // NOTE: According to requirements, we should NOT rebuild hops from trace:line
+  // This effect is removed - trace:line is only for raw terminal output
+  // Hop data comes only from hop:update events
+  
+  // Handle hop updates for real-time location updates - this is the source of truth for hop data
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__) return;
     
     console.info('[React] Installing hop:update listener...');
     
     let unlisten: (() => void) | null = null;
+    
+    // Define merge function as per requirements
+    const mergeHop = (prev: HopData | undefined, incoming: HopData): HopData => {
+      // Preserve geo if incoming doesn't have it
+      const geo = incoming.geo ?? prev?.geo ?? null;
+
+      // Prefer "success" over "timeout" if either says success
+      const status = prev?.status === "success" || incoming.status === "success"
+        ? "success"
+        : incoming.status ?? prev?.status ?? "pending";
+
+      // Prefer a real latency over null
+      const avgLatency = incoming.avgLatency ?? prev?.avgLatency ?? null;
+
+      return {
+        ...(prev ?? incoming),
+        ...incoming,
+        geo,
+        status,
+        avgLatency,
+      };
+    };
     
     listen('hop:update', (event: { payload: { trace_id: string, hop_data: HopData } }) => {
       console.info('[React] hop:update received:', event.payload);
@@ -96,40 +98,12 @@ export const useTrace = () => {
       if (event.payload.trace_id === activeTraceId) {
         console.info('[React] Processing hop update for current trace');
         
-        // Update currentHops with the new hop data
-        setCurrentHops(prevHops => {
-          const updatedHops = [...prevHops];
-          const hopIndex = updatedHops.findIndex(h => h.hop === event.payload.hop_data.hop);
-          
-          if (hopIndex >= 0) {
-            // Update existing hop - properly merge all available data
-            const existingHop = updatedHops[hopIndex];
-            updatedHops[hopIndex] = {
-              ...existingHop, // Start with existing data
-              ...event.payload.hop_data, // Apply new data
-              // Specifically preserve/merge important fields
-              // For geo, merge the new geo data with existing geo data, prioritizing non-null values
-              geo: {
-                ...existingHop.geo, // Start with existing geo
-                ...event.payload.hop_data.geo, // Override with new geo values where they exist
-              },
-              // Preserve existing avgLatency if new one is null/undefined and existing is valid
-              avgLatency: event.payload.hop_data.avgLatency ?? existingHop.avgLatency,
-              // Preserve existing status if new one is empty and existing is valid
-              status: event.payload.hop_data.status || existingHop.status,
-              // For latencies, only update if the new data has values
-              latencies: event.payload.hop_data.latencies?.length > 0 ? 
-                event.payload.hop_data.latencies : existingHop.latencies
-            };
-          } else {
-            // Add new hop
-            updatedHops.push(event.payload.hop_data);
-          }
-          
-          // Sort hops by hop number to maintain order
-          updatedHops.sort((a, b) => a.hop - b.hop);
-          
-          return updatedHops;
+        // Update hops map with the new hop data using merge function
+        setHopsByHop(prev => {
+          const next = new Map(prev);
+          const existing = next.get(event.payload.hop_data.hop);
+          next.set(event.payload.hop_data.hop, mergeHop(existing, event.payload.hop_data));
+          return next;
         });
       } else {
         console.info('[React] Ignoring hop update for different trace:', event.payload.trace_id);
@@ -149,45 +123,60 @@ export const useTrace = () => {
     };
   }, [activeTraceId]);
 
-  // Handle completion event from backend
+  // Handle completion event from backend - merge into existing hops instead of replacing
   useEffect(() => {
     logger.info(`[use-trace] Completion effect triggered, completion: ${JSON.stringify(completion)}`);
     if (completion && !useSimulation) {
       logger.info('Received trace completion event, updating state');
       logger.info(`[use-trace] Processing completion event for trace_id= ${completion.trace_id}`);
       
-      // Enhance completion result with current streaming data to preserve better information
+      // Define merge function as per requirements
+      const mergeHop = (prev: HopData | undefined, incoming: HopData): HopData => {
+        // Preserve geo if incoming doesn't have it
+        const geo = incoming.geo ?? prev?.geo ?? null;
+
+        // Prefer "success" over "timeout" if either says success
+        const status = prev?.status === "success" || incoming.status === "success"
+          ? "success"
+          : incoming.status ?? prev?.status ?? "pending";
+
+        // Prefer a real latency over null
+        const avgLatency = incoming.avgLatency ?? prev?.avgLatency ?? null;
+
+        return {
+          ...(prev ?? incoming),
+          ...incoming,
+          geo,
+          status,
+          avgLatency,
+        };
+      };
+      
+      // Merge completion result into existing hops
       const enhancedResult = {
         ...completion.result,
-        // Merge completion hops with current hops, prioritizing current hops with richer data
-        hops: completion.result.hops.map(completionHop => {
-          const currentHop = currentHops.find(h => h.hop === completionHop.hop);
-          if (currentHop) {
-            // Merge hop data, preferring current hop data for fields that are more complete
-            return {
-              ...completionHop, // Start with completion data
-              ...currentHop,   // Override with current data (preserving geo, etc.)
-              // Specifically merge geo data to avoid losing location info
-              geo: completionHop.geo || currentHop.geo || null,
-              // Preserve better status/latency if current hop has better data
-              status: currentHop.status || completionHop.status,
-              avgLatency: currentHop.avgLatency ?? completionHop.avgLatency,
-              latencies: currentHop.latencies?.length > 0 ? currentHop.latencies : completionHop.latencies
-            };
-          }
-          return completionHop;
+        hops: completion.result.hops.map(hop => {
+          const existing = hopsByHop.get(hop.hop);
+          return mergeHop(existing, hop);
         })
       };
       
       setResult(enhancedResult);
-      // Update currentHops with the enhanced result when trace completes
-      setCurrentHops(enhancedResult.hops);
+      // Update hops map with merged completion data
+      setHopsByHop(prev => {
+        const next = new Map(prev);
+        for (const hop of completion.result.hops) {
+          const existing = next.get(hop.hop);
+          next.set(hop.hop, mergeHop(existing, hop));
+        }
+        return next;
+      });
       logger.info('[use-trace] Setting isTracing to false');
       setIsTracing(false);
       setActiveTraceId(null);
       resetLines();
     }
-  }, [completion, useSimulation, currentHops]); // Added currentHops to dependencies
+  }, [completion, useSimulation, hopsByHop]); // Added hopsByHop to dependencies
   
   const startTrace = useCallback(async (target: string, options: TraceOptions = {}) => {
     logger.debug(`startTrace called with target: ${target}, options:`, options);
@@ -200,7 +189,7 @@ export const useTrace = () => {
 
     logger.info(`Starting real traceroute to: ${target}`);
     setIsTracing(true);
-    setCurrentHops([]);
+    setHopsByHop(new Map());
     setResult(null);
     setError(null);
     resetLines(); // Clear previous lines
@@ -248,6 +237,7 @@ export const useTrace = () => {
       
       // Reset state on error
       setIsTracing(false);
+      setHopsByHop(new Map());
       setActiveTraceId(null);
       throw err; // Throw the error to propagate it properly
     }
@@ -268,6 +258,7 @@ export const useTrace = () => {
       }
       logger.info('Successfully sent stop command');
       setIsTracing(false);
+      setHopsByHop(new Map());
       setActiveTraceId(null);
     } catch (err) {
       logger.error("Failed to stop trace:", err);
