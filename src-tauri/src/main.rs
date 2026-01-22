@@ -110,7 +110,7 @@ static GEO_DB: Lazy<Option<Reader<Vec<u8>>>> = Lazy::new(|| {
     let possible_paths = [
         "resources/GeoLite2-City.mmdb",
         "GeoLite2-City.mmdb",
-        &format!("{}/Local/tracert/GeoLite2-City.mmdb", data_dir.to_str().unwrap()),
+        &format!("{}/tracert/GeoLite2-City.mmdb", data_dir.to_str().unwrap()),
     ];
     
     for path in &possible_paths {
