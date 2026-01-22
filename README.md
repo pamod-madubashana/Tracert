@@ -1,8 +1,12 @@
-# TraceRT - Advanced Traceroute Visualization Tool
+<h1 align="center">TraceRT</h1>
 
-## Project Overview
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="TraceRT Icon" width="128" height="128">
+</p>
 
+<p align="center">
 TraceRT is a cross-platform desktop application built with Tauri v2 and Rust that provides real-time visualization of network traceroute data. The application combines powerful backend networking tools with an intuitive React frontend to visualize network paths and latency measurements on interactive maps.
+</p>
 
 ## Features
 
@@ -22,6 +26,10 @@ TraceRT is a cross-platform desktop application built with Tauri v2 and Rust tha
 - **Maps**: AmCharts 5 with geodata
 - **Geolocation**: MaxMind GeoLite2 database
 - **Build Tools**: Cargo, npm, TypeScript
+
+## Screenshots
+
+![TraceRT Application](screenshots/TraceRT.png)
 
 ## Key Technical Features
 
