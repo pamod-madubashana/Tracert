@@ -190,7 +190,7 @@ const TopologyMap = ({ hops, target, compact = true }: TopologyMapProps) => {
                   <span className="font-display text-[8px] text-primary">{hop.hop}</span>
                 </div>
                 <span className="text-[8px] text-muted-foreground font-mono max-w-12 truncate">
-                  {hop.avgLatency ? `${hop.avgLatency}ms` : hop.ip?.split('.').slice(-1)[0] || "*"}
+                  {hop.avgLatency ? `${Math.round(hop.avgLatency)}ms` : hop.ip?.split('.').slice(-1)[0] || "*"}
                 </span>
               </div>
             ))}
