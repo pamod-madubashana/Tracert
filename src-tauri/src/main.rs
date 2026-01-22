@@ -48,23 +48,8 @@ async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
     let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
 
     // Direct lookup without deserializing to our custom struct
-    match db.lookup(addr) {
-        Ok(lookup_result) => {
-            // Properly deserialize the lookup result to access fields
-            let city_response: maxminddb::geoip2::City = match serde_json::from_value(serde_json::to_value(&lookup_result).map_err(|e| format!("Serialization error: {}", e))?) {
-                Ok(city) => city,
-                Err(_) => {
-                    return Ok(GeoResult {
-                        ip,
-                        lat: None,
-                        lng: None,
-                        city: Some("Unknown".to_string()),
-                        country: Some("Unknown".to_string()),
-                        country_code: None,
-                    });
-                }
-            };
-
+    match db.lookup::<maxminddb::geoip2::City>(addr) {
+        Ok(city_response) => {
             let lat = city_response.location.as_ref().and_then(|l| l.latitude);
             let lng = city_response.location.as_ref().and_then(|l| l.longitude);
 
@@ -1126,23 +1111,8 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
         "Invalid IP address".to_string()
     })?;
 
-    match db.lookup(addr) {
-        Ok(lookup_result) => {
-            // Properly deserialize the lookup result to access fields
-            let city_response: maxminddb::geoip2::City = match serde_json::from_value(serde_json::to_value(&lookup_result).map_err(|e| format!("Serialization error: {}", e))?) {
-                Ok(city) => city,
-                Err(_) => {
-                    return Ok(GeoResult {
-                        ip,
-                        lat: None,
-                        lng: None,
-                        city: Some("Unknown".to_string()),
-                        country: Some("Unknown".to_string()),
-                        country_code: None,
-                    });
-                }
-            };
-
+    match db.lookup::<maxminddb::geoip2::City>(addr) {
+        Ok(city_response) => {
             let lat = city_response.location.as_ref().and_then(|l| l.latitude);
             let lng = city_response.location.as_ref().and_then(|l| l.longitude);
 
