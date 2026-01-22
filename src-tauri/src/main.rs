@@ -101,30 +101,45 @@ pub struct GeoLocation {
     pub country: Option<String>,
     pub country_code: Option<String>,
 }
-
+static GEO_DB: Lazy<Mutex<Option<Reader<Vec<u8>>>>> = Lazy::new(|| Mutex::new(None));
 // Static reference to the geolocation database
-static GEO_DB: Lazy<Option<Reader<Vec<u8>>>> = Lazy::new(|| {
-    // Look for the geolocation database file in resources or app data
-    let base_dirs = BaseDirs::new();
-    let data_dir = base_dirs.as_ref().map(|dirs| dirs.data_dir()).unwrap_or(Path::new("."));
-    let possible_paths = [
-        "resources/GeoLite2-City.mmdb",
-        "GeoLite2-City.mmdb",
-        &format!("{}/Local/tracert/GeoLite2-City.mmdb", data_dir.to_str().unwrap()),
-    ];
-    
-    for path in &possible_paths {
-        if Path::new(path).exists() {
-            match Reader::open_readfile(Path::new(path)) {
-                Ok(reader) => return Some(reader),
-                Err(e) => {
-                    eprintln!("Failed to load geodb from {}: {}", path, e);
+fn geodb_candidate_paths() -> Vec<PathBuf> {
+    let mut paths = vec![];
+
+    // dev / working dir
+    paths.push(PathBuf::from("resources/GeoLite2-City.mmdb"));
+    paths.push(PathBuf::from("GeoLite2-City.mmdb"));
+
+    if let Some(dirs) = BaseDirs::new() {
+        // ✅ correct Windows "Local" dir
+        let local = dirs.data_local_dir();
+        paths.push(local.join("tracert").join("GeoLite2-City.mmdb"));
+        paths.push(local.join("TraceRT").join("GeoLite2-City.mmdb"));
+    }
+
+    paths
+}
+
+fn try_load_geodb() -> Option<Reader<Vec<u8>>> {
+    for p in geodb_candidate_paths() {
+        if p.exists() {
+            match Reader::open_readfile(&p) {
+                Ok(r) => {
+                    tracing::info!("[Rust] [GEO] Loaded GeoLite DB from: {}", p.display());
+                    return Some(r);
                 }
+                Err(e) => tracing::warn!("[Rust] [GEO] Failed to open {}: {}", p.display(), e),
             }
         }
     }
+
+    tracing::warn!("[Rust] [GEO] GeoLite DB not found. Searched paths:");
+    for p in geodb_candidate_paths() {
+        tracing::warn!("[Rust] [GEO]  - {}", p.display());
+    }
+
     None
-});
+}
 
 #[derive(Serialize, Clone)]
 struct TraceLineEvent {
