@@ -1,73 +1,99 @@
-# Welcome to your Lovable project
+# TraceRT - Advanced Traceroute Visualization Tool
 
-## Project info
+## Project Overview
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+TraceRT is a cross-platform desktop application built with Tauri v2 and Rust that provides real-time visualization of network traceroute data. The application combines powerful backend networking tools with an intuitive React frontend to visualize network paths and latency measurements on interactive maps.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- **Real-time Traceroute Visualization**: Watch network packets travel across the globe in real-time
+- **Interactive World Map**: Visualize hop locations and route paths on a dynamic world map
+- **Network Topology View**: See the network path in a structured topology diagram
+- **Detailed Hop Information**: View latency, IP addresses, and geographic locations for each hop
+- **Cross-platform Support**: Built with Tauri for native performance on Windows, macOS, and Linux
+- **Geolocation Integration**: Automatically resolves IP addresses to geographic locations
+- **Performance Metrics**: Displays accurate latency measurements as integers for clarity
 
-**Use Lovable**
+## Technologies Used
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- **Backend**: Rust, Tauri v2, Tokio async runtime
+- **Frontend**: React, TypeScript, Vite
+- **Styling**: Tailwind CSS, shadcn/ui
+- **Maps**: AmCharts 5 with geodata
+- **Geolocation**: MaxMind GeoLite2 database
+- **Build Tools**: Cargo, npm, TypeScript
 
-Changes made via Lovable will be committed automatically to this repo.
+## Key Technical Features
 
-**Use your preferred IDE**
+- **Streaming Architecture**: Real-time event-driven updates using Tauri events
+- **Smart State Management**: Proper hop state preservation using Map-based storage
+- **Accurate Parsing**: Robust Windows `tracert` and Unix `traceroute` output parsing
+- **Geographic Filtering**: Intelligent filtering of private IPs and invalid coordinates
+- **Performance Optimization**: Integer-based latency display for cleaner UI
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Architecture Highlights
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- **Backend Processing**: Rust handles traceroute execution, output parsing, and geolocation lookup
+- **Event System**: Real-time updates via Tauri events (`trace:line`, `hop:update`, `trace:complete`)
+- **Frontend State**: React hooks manage streaming data and maintain consistent UI state
+- **Map Logic**: Smart origin point detection (first public hop with valid geo coordinates)
 
-Follow these steps:
+## Getting Started
+
+### Prerequisites
+
+- Node.js and npm
+- Rust and Cargo
+- Git
+
+### Installation
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Clone the repository
+git clone <REPO_URL>
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Navigate to the project directory
+cd TraceRT
 
-# Step 3: Install the necessary dependencies.
-npm i
+# Install JavaScript dependencies
+npm install
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Install Rust dependencies (if needed)
+cargo check
+
+# Start the development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Building
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```sh
+# Build the application
+npm run tauri build
+```
 
-**Use GitHub Codespaces**
+## How It Works
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+1. **Trace Initiation**: User enters a target IP or domain name
+2. **Backend Execution**: Rust executes the appropriate traceroute command for the OS
+3. **Real-time Parsing**: Output is parsed line-by-line as it's generated
+4. **Geolocation Lookup**: IP addresses are resolved to geographic coordinates
+5. **Event Streaming**: Hop data is streamed to the frontend via Tauri events
+6. **Visualization**: Interactive maps and tables update in real-time
+7. **Completion**: Final results are aggregated and displayed when tracing completes
 
-## What technologies are used for this project?
+## Unique Capabilities
 
-This project is built with:
+- **Origin Point Detection**: Map automatically centers on the first public hop with valid geo coordinates
+- **Private IP Handling**: Properly identifies and handles private IP ranges (10.x, 192.168.x, 172.16-31.x)
+- **State Preservation**: Maintains accurate geo data even when streaming updates occur
+- **Clean Latency Display**: Rounds latency values to integers for improved readability
+- **Robust Parsing**: Handles various traceroute output formats including domain-before-IP notation
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Contributing
 
-## How can I deploy this project?
+Contributions are welcome! Feel free to submit pull requests or report issues.
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## License
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+MIT
