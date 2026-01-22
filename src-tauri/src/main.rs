@@ -48,52 +48,45 @@ async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
     let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
 
     // Direct lookup without deserializing to our custom struct
-    match db.lookup(addr) {
-        Ok(lookup_result) => {
-            // Decode the lookup result to City type
-            if let Ok(Some(city_response)) = lookup_result.decode::<maxminddb::geoip2::City>() {
-                let lat = city_response.location.and_then(|l| l.latitude);
-                let lng = city_response.location.and_then(|l| l.longitude);
+    use maxminddb::PathElement;
 
-                let city_name = city_response.city
-                    .and_then(|c| c.names)
-                    .and_then(|n: std::collections::HashMap<String, String>| n.get("en").cloned());
+    let result = db.lookup(addr).map_err(|e| e.to_string())?;
 
-                let country_name = city_response.country
-                    .and_then(|c| c.names)
-                    .and_then(|n: std::collections::HashMap<String, String>| n.get("en").cloned());
+    let lat: Option<f64> = result.decode_path(&[
+        PathElement::Key("location"),
+        PathElement::Key("latitude"),
+    ]).map_err(|e| e.to_string())?;
 
-                let country_code = city_response.country
-                    .and_then(|c| c.iso_code);
+    let lng: Option<f64> = result.decode_path(&[
+        PathElement::Key("location"),
+        PathElement::Key("longitude"),
+    ]).map_err(|e| e.to_string())?;
 
-                Ok(GeoResult {
-                    ip,
-                    lat,
-                    lng,
-                    city: city_name,
-                    country: country_name,
-                    country_code,
-                })
-            } else {
-                Ok(GeoResult {
-                    ip,
-                    lat: None,
-                    lng: None,
-                    city: Some("Unknown".to_string()),
-                    country: Some("Unknown".to_string()),
-                    country_code: None,
-                })
-            }
-        }
-        Err(_) => Ok(GeoResult {
-            ip,
-            lat: None,
-            lng: None,
-            city: Some("Unknown".to_string()),
-            country: Some("Unknown".to_string()),
-            country_code: None,
-        }),
-    }
+    let city_name: Option<String> = result.decode_path(&[
+        PathElement::Key("city"),
+        PathElement::Key("names"),
+        PathElement::Key("en"),
+    ]).map_err(|e| e.to_string())?;
+
+    let country_name: Option<String> = result.decode_path(&[
+        PathElement::Key("country"),
+        PathElement::Key("names"),
+        PathElement::Key("en"),
+    ]).map_err(|e| e.to_string())?;
+
+    let country_code: Option<String> = result.decode_path(&[
+        PathElement::Key("country"),
+        PathElement::Key("iso_code"),
+    ]).map_err(|e| e.to_string())?;
+
+    Ok(GeoResult {
+        ip,
+        lat,
+        lng,
+        city: city_name,
+        country: country_name,
+        country_code,
+    })
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -1119,58 +1112,51 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
         "Invalid IP address".to_string()
     })?;
 
-    match db.lookup(addr) {
-        Ok(lookup_result) => {
-            // Decode the lookup result to City type
-            if let Ok(Some(city_response)) = lookup_result.decode::<maxminddb::geoip2::City>() {
-                let lat = city_response.location.and_then(|l| l.latitude);
-                let lng = city_response.location.and_then(|l| l.longitude);
+    use maxminddb::PathElement;
 
-                let city_name = city_response.city
-                    .and_then(|c| c.names)
-                    .and_then(|n: std::collections::HashMap<String, String>| n.get("en").cloned());
+    let result = db.lookup(addr).map_err(|e| {
+        tracing::debug!("[Rust] [GEO] Geolocation lookup failed for {}: {}", ip, e);
+        e.to_string()
+    })?;
 
-                let country_name = city_response.country
-                    .and_then(|c| c.names)
-                    .and_then(|n: std::collections::HashMap<String, String>| n.get("en").cloned());
+    let lat: Option<f64> = result.decode_path(&[
+        PathElement::Key("location"),
+        PathElement::Key("latitude"),
+    ]).map_err(|e| e.to_string())?;
 
-                let country_code = city_response.country
-                    .and_then(|c| c.iso_code);
+    let lng: Option<f64> = result.decode_path(&[
+        PathElement::Key("location"),
+        PathElement::Key("longitude"),
+    ]).map_err(|e| e.to_string())?;
 
-                tracing::debug!("[Rust] [GEO] Successful lookup for {}: lat={:?}, lng={:?}, city={:?}, country={:?}",
-                               ip, lat, lng, city_name, country_name);
-                
-                Ok(GeoResult {
-                    ip,
-                    lat,
-                    lng,
-                    city: city_name,
-                    country: country_name,
-                    country_code,
-                })
-            } else {
-                Ok(GeoResult {
-                    ip,
-                    lat: None,
-                    lng: None,
-                    city: Some("Unknown".to_string()),
-                    country: Some("Unknown".to_string()),
-                    country_code: None,
-                })
-            }
-        }
-        Err(e) => {
-            tracing::debug!("[Rust] [GEO] Geolocation lookup failed for {}: {}", ip, e);
-            Ok(GeoResult {
-                ip,
-                lat: None,
-                lng: None,
-                city: Some("Unknown".to_string()),
-                country: Some("Unknown".to_string()),
-                country_code: None,
-            })
-        },
-    }
+    let city_name: Option<String> = result.decode_path(&[
+        PathElement::Key("city"),
+        PathElement::Key("names"),
+        PathElement::Key("en"),
+    ]).map_err(|e| e.to_string())?;
+
+    let country_name: Option<String> = result.decode_path(&[
+        PathElement::Key("country"),
+        PathElement::Key("names"),
+        PathElement::Key("en"),
+    ]).map_err(|e| e.to_string())?;
+
+    let country_code: Option<String> = result.decode_path(&[
+        PathElement::Key("country"),
+        PathElement::Key("iso_code"),
+    ]).map_err(|e| e.to_string())?;
+
+    tracing::debug!("[Rust] [GEO] Successful lookup for {}: lat={:?}, lng={:?}, city={:?}, country={:?}",
+                   ip, lat, lng, city_name, country_name);
+    
+    Ok(GeoResult {
+        ip,
+        lat,
+        lng,
+        city: city_name,
+        country: country_name,
+        country_code,
+    })
 }
 
 #[tauri::command]
