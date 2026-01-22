@@ -1,5 +1,5 @@
-// #![windows_subsystem = "console"]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![windows_subsystem = "console"]
+// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 
 #[cfg(windows)]
