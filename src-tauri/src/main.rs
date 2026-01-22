@@ -48,8 +48,11 @@ async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
     let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
 
     // Direct lookup without deserializing to our custom struct
-    match db.lookup::<maxminddb::geoip2::City>(addr) {
-        Ok(city_response) => {
+    match db.lookup(addr) {
+        Ok(lookup_result) => {
+            // Access the data through the proper API
+            let city_response: maxminddb::geoip2::City = lookup_result;
+            
             let lat = city_response.location.as_ref().and_then(|l| l.latitude);
             let lng = city_response.location.as_ref().and_then(|l| l.longitude);
 
@@ -1111,8 +1114,11 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
         "Invalid IP address".to_string()
     })?;
 
-    match db.lookup::<maxminddb::geoip2::City>(addr) {
-        Ok(city_response) => {
+    match db.lookup(addr) {
+        Ok(lookup_result) => {
+            // Access the data through the proper API
+            let city_response: maxminddb::geoip2::City = lookup_result;
+            
             let lat = city_response.location.as_ref().and_then(|l| l.latitude);
             let lng = city_response.location.as_ref().and_then(|l| l.longitude);
 
