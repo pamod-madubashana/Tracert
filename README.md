@@ -45,6 +45,7 @@ TraceRT is a cross-platform desktop application built with Tauri v2 and Rust tha
 - Node.js and npm
 - Rust and Cargo
 - Git
+- Internet connection to download the geolocation database
 
 ### Installation
 
@@ -64,6 +65,20 @@ cargo check
 # Start the development server
 npm run dev
 ```
+
+### Database Setup
+
+The application requires the MaxMind GeoLite2 City database (GeoLite2-City.mmdb) for IP geolocation services. This database file needs to be placed in the appropriate application data directory:
+
+**Automatic Download:**
+The application can automatically download the database file when needed. If you encounter geolocation issues, you can trigger a manual download by using the download functionality in the app.
+
+**Manual Download:**
+1. Download the `GeoLite2-City.mmdb` file from: https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb
+2. Place it in the appropriate directory based on your operating system:
+   - **Windows:** `%APPDATA%\TraceRT\GeoLite2-City.mmdb` (typically `C:\Users\<username>\AppData\Roaming\TraceRT\GeoLite2-City.mmdb`)
+   - **macOS:** `~/Library/Application Support/TraceRT/GeoLite2-City.mmdb`
+   - **Linux:** `~/.local/share/TraceRT/GeoLite2-City.mmdb` or `~/.config/TraceRT/GeoLite2-City.mmdb`
 
 ### Building
 
