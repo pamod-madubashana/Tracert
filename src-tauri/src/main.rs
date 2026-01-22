@@ -18,15 +18,17 @@ use once_cell::sync::Lazy;
 use std::process::Stdio;
 use tokio::fs;
 
+use maxminddb::geoip2::city::{Location, City, Country};
+
 // Define the structure for the City database
 #[derive(Deserialize)]
-struct CityResponse {
+struct CityResponse<'a> {
     #[serde(rename = "location")]
-    location: Option<maxminddb::geoip2::Location>,
+    location: Option<Location<'a>>,
     #[serde(rename = "city")]
-    city: Option<maxminddb::geoip2::City>,
+    city: Option<City<'a>>,
     #[serde(rename = "country")]
-    country: Option<maxminddb::geoip2::Country>,
+    country: Option<Country<'a>>,
 }
 
 #[tauri::command]
@@ -56,7 +58,7 @@ async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
     let db = GEO_DB.as_ref().ok_or_else(|| "Geolocation database not loaded".to_string())?;
     let addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address".to_string())?;
 
-    match db.lookup(addr) {
+    match db.lookup::<CityResponse>(addr) {
         Ok(city_response) => {
             let lat = city_response.location.as_ref().and_then(|l| l.latitude);
             let lng = city_response.location.as_ref().and_then(|l| l.longitude);
@@ -1119,7 +1121,7 @@ async fn geo_lookup_inner(ip: String) -> Result<GeoResult, String> {
         "Invalid IP address".to_string()
     })?;
 
-    match db.lookup(addr) {
+    match db.lookup::<CityResponse>(addr) {
         Ok(city_response) => {
             let lat = city_response.location.as_ref().and_then(|l| l.latitude);
             let lng = city_response.location.as_ref().and_then(|l| l.longitude);
