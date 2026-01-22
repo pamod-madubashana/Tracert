@@ -108,8 +108,14 @@ export const useTrace = () => {
               ...existingHop, // Start with existing data
               ...event.payload.hop_data, // Apply new data
               // Specifically preserve/merge important fields
-              geo: event.payload.hop_data.geo || existingHop.geo,
+              // For geo, merge the new geo data with existing geo data, prioritizing non-null values
+              geo: {
+                ...existingHop.geo, // Start with existing geo
+                ...event.payload.hop_data.geo, // Override with new geo values where they exist
+              },
+              // Preserve existing avgLatency if new one is null/undefined and existing is valid
               avgLatency: event.payload.hop_data.avgLatency ?? existingHop.avgLatency,
+              // Preserve existing status if new one is empty and existing is valid
               status: event.payload.hop_data.status || existingHop.status,
               // For latencies, only update if the new data has values
               latencies: event.payload.hop_data.latencies?.length > 0 ? 
@@ -149,15 +155,39 @@ export const useTrace = () => {
     if (completion && !useSimulation) {
       logger.info('Received trace completion event, updating state');
       logger.info(`[use-trace] Processing completion event for trace_id= ${completion.trace_id}`);
-      setResult(completion.result);
-      // Update currentHops with the final result when trace completes
-      setCurrentHops(completion.result.hops);
+      
+      // Enhance completion result with current streaming data to preserve better information
+      const enhancedResult = {
+        ...completion.result,
+        // Merge completion hops with current hops, prioritizing current hops with richer data
+        hops: completion.result.hops.map(completionHop => {
+          const currentHop = currentHops.find(h => h.hop === completionHop.hop);
+          if (currentHop) {
+            // Merge hop data, preferring current hop data for fields that are more complete
+            return {
+              ...completionHop, // Start with completion data
+              ...currentHop,   // Override with current data (preserving geo, etc.)
+              // Specifically merge geo data to avoid losing location info
+              geo: completionHop.geo || currentHop.geo || null,
+              // Preserve better status/latency if current hop has better data
+              status: currentHop.status || completionHop.status,
+              avgLatency: currentHop.avgLatency ?? completionHop.avgLatency,
+              latencies: currentHop.latencies?.length > 0 ? currentHop.latencies : completionHop.latencies
+            };
+          }
+          return completionHop;
+        })
+      };
+      
+      setResult(enhancedResult);
+      // Update currentHops with the enhanced result when trace completes
+      setCurrentHops(enhancedResult.hops);
       logger.info('[use-trace] Setting isTracing to false');
       setIsTracing(false);
       setActiveTraceId(null);
       resetLines();
     }
-  }, [completion, useSimulation]); // Removed resetLines from dependencies
+  }, [completion, useSimulation, currentHops]); // Added currentHops to dependencies
   
   const startTrace = useCallback(async (target: string, options: TraceOptions = {}) => {
     logger.debug(`startTrace called with target: ${target}, options:`, options);

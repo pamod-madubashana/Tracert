@@ -91,8 +91,8 @@ async fn geo_lookup(ip: String) -> Result<GeoResult, String> {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GeoLocation {
-    pub lat: f64,
-    pub lng: f64,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
     pub city: Option<String>,
     pub country: Option<String>,
     pub country_code: Option<String>,
@@ -444,8 +444,8 @@ async fn execute_trace_with_cancel(
                                 if let Ok(geo_result) = geo_lookup_inner(ip.to_string()).await {
                                     // Convert GeoResult to GeoLocation
                                     hop_data.geo = Some(GeoLocation {
-                                        lat: geo_result.lat.unwrap_or(0.0),
-                                        lng: geo_result.lng.unwrap_or(0.0),
+                                        lat: geo_result.lat,
+                                        lng: geo_result.lng,
                                         city: geo_result.city,
                                         country: geo_result.country,
                                         country_code: geo_result.country_code,
@@ -494,8 +494,8 @@ async fn execute_trace_with_cancel(
                                 if let Ok(geo_result) = geo_lookup_inner(ip.to_string()).await {
                                     // Convert GeoResult to GeoLocation
                                     hop_data.geo = Some(GeoLocation {
-                                        lat: geo_result.lat.unwrap_or(0.0),
-                                        lng: geo_result.lng.unwrap_or(0.0),
+                                        lat: geo_result.lat,
+                                        lng: geo_result.lng,
                                         city: geo_result.city,
                                         country: geo_result.country,
                                         country_code: geo_result.country_code,
@@ -740,27 +740,40 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
         
         let mut i = 1; // Start after hop number
         
-        // Process up to 3 latency values - look for the pattern: number ms
+        // Process up to 3 latency values - look for latency patterns
         let mut latency_count = 0;
         while i < parts.len() && latency_count < 3 {
             let part = parts[i];
             
-            if part.ends_with("ms") {
-                // Handle cases like "<1 ms", "1 ms", "100 ms"
-                let time_str = part.strip_suffix("ms").unwrap_or(part);
-                let time_str = time_str.trim_start_matches('<'); // Handle "<1" case
-                if let Ok(time) = time_str.trim().parse::<f64>() {
+            // Look for patterns: number followed by "ms", or "<number" followed by "ms", or "*"
+            if part == "*" {
+                // Timeout marker
+                latencies.push(None);
+                latency_count += 1;
+                i += 1;
+            } else if part.starts_with('<') && i + 1 < parts.len() && parts[i+1] == "ms" {
+                // Pattern: "<1" "ms"
+                let time_str = part.strip_prefix("<").unwrap_or(part);
+                if let Ok(time) = time_str.parse::<f64>() {
                     latencies.push(Some(time));
                 } else {
                     latencies.push(None);
                 }
                 latency_count += 1;
-            } else if part == "*" {
-                latencies.push(None);
+                i += 2; // Skip both the number and "ms"
+            } else if i + 1 < parts.len() && parts[i+1] == "ms" {
+                // Pattern: "1" "ms"
+                if let Ok(time) = part.parse::<f64>() {
+                    latencies.push(Some(time));
+                } else {
+                    latencies.push(None);
+                }
                 latency_count += 1;
+                i += 2; // Skip both the number and "ms"
+            } else {
+                // Not a latency pattern, move to next
+                i += 1;
             }
-            // If it's not a latency marker, continue to the next part
-            i += 1;
         }
         
         // The remaining parts should contain IP/address
@@ -803,7 +816,7 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
             hop: hop_num,
             host: host_part,
             ip: ip_part,
-            latencies: vec![], // Empty array since we only show average
+            latencies: latencies, // Store the full array of latency values
             avg_latency,
             status: if !valid_latencies.is_empty() { "success".to_string() } else { "timeout".to_string() },
             geo: None,
@@ -869,7 +882,7 @@ fn parse_traceroute_line(line: &str) -> Option<HopData> {
             hop: hop_num,
             host: host_part,
             ip: ip_part,
-            latencies: vec![], // Empty array since we only show average
+            latencies: latencies, // Store the full array of latency values
             avg_latency,
             status: if !valid_latencies.is_empty() { "success".to_string() } else { "timeout".to_string() },
             geo: None,
